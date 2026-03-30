@@ -1,15 +1,11 @@
 {
-  "name": "st-azure-codex",
-  "display_name": "Azure Codex (Relationship System)",
-  "description": "ระบบความสัมพันธ์และเก็บค่าความชอบ (Affection/Annoyance) แบบเรียลไทม์ พร้อมหน้าต่าง Overlay สีฟ้า (Azure Theme) สำหรับ SillyTavern.",
-  "version": "1.0.0",
-  "author": "Antigravity",
-  "min_st_version": "1.10.0",
-  "scripts": [
-    "index.js"
-  ],
-  "assets": [
-    "style.css",
-    "template.html"
-  ]
+    "display_name": "Azure Codex – NPC Tracker",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "AzureCodex",
+    "version": "1.0.0",
+    "homePage": ""
 }
