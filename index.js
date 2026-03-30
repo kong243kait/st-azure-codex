@@ -1,5 +1,6 @@
 import { extension_settings, getContext } from "../../../extensions.js";
-import { registerSlashCommand } from "../../../slash-commands.js";
+import { SlashCommand } from "../../../slash-commands/SlashCommand.js";
+import { SlashCommandParser } from "../../../slash-commands/SlashCommandParser.js";
 
 const extensionName = "st-azure-codex";
 const extensionFolderPath = `scripts/extensions/${extensionName}`;
@@ -10,15 +11,15 @@ const defaultSettings = {
 
 class RelationshipSystem {
     constructor() {
-        this.bots = extension_settings[extensionName].bots;
+        this.bots = extension_settings[extensionName].bots || {};
         this.activeTab = 'all'; 
         this.isClosed = true; // Hidden on boot
     }
 
     initUI() {
-        const root = document.getElementById('app-root');
-        const floatBtn = document.getElementById('floating-btn');
-        const toggleBtn = document.getElementById('toggle-btn');
+        const root = document.getElementById('azure-app-root');
+        const floatBtn = document.getElementById('azure-floating-btn');
+        const toggleBtn = document.getElementById('azure-toggle-btn');
 
         floatBtn.addEventListener('click', () => {
             // Auto fetch current bot data before opening
@@ -149,7 +150,7 @@ class RelationshipSystem {
     }
 
     renderTabs(keys) {
-        const container = document.getElementById('ui-tabs');
+        const container = document.getElementById('azure-ui-tabs');
         if(!container) return;
         
         let html = `<div class="grtab ${this.activeTab === 'all' ? 'active' : ''}" data-tab="all">✦ ALL</div>`;
@@ -168,7 +169,7 @@ class RelationshipSystem {
     }
 
     renderPanels(keys) {
-        const container = document.getElementById('ui-panels');
+        const container = document.getElementById('azure-ui-panels');
         if(!container) return;
         let html = '';
 
@@ -261,9 +262,12 @@ jQuery(async () => {
     codex.initUI();
     
     // 5. Register Slash Commands for interacting inside chat
-    registerSlashCommand("codex-aff", (args) => {
-        const amount = parseInt(args);
+    const affCallback = (namedArgs, unnamedArgs) => {
+        // unnamedArgs returns the rest of the arguments. sometimes args just defaults to the 1st parameter.
+        let amount = parseInt(unnamedArgs);
+        if(isNaN(amount)) amount = parseInt(namedArgs);
         if(isNaN(amount)) return "";
+        
         const ctx = getContext();
         if(ctx.characterId === undefined) return "No active character to add affection.";
         const cname = ctx.characters[ctx.characterId].name;
@@ -271,14 +275,13 @@ jQuery(async () => {
         codex.syncCurrentCharacter();
         codex.updateRelationship(cname, amount, 0);
         return `CodeX: Added ${amount} Affection to ${cname}!`;
-    }, {
-        help: "Add affection to current active character.",
-        unnamedArgumentList: [{ type: "number", description: "Amount (e.g. 10 or -5)" }]
-    });
+    };
 
-    registerSlashCommand("codex-ann", (args) => {
-        const amount = parseInt(args);
+    const annCallback = (namedArgs, unnamedArgs) => {
+        let amount = parseInt(unnamedArgs);
+        if(isNaN(amount)) amount = parseInt(namedArgs);
         if(isNaN(amount)) return "";
+        
         const ctx = getContext();
         if(ctx.characterId === undefined) return "No active character to add annoyance.";
         const cname = ctx.characters[ctx.characterId].name;
@@ -286,8 +289,19 @@ jQuery(async () => {
         codex.syncCurrentCharacter();
         codex.updateRelationship(cname, 0, amount);
         return `CodeX: Added ${amount} Annoyance to ${cname}!`;
-    }, {
-        help: "Add annoyance to current active character.",
-        unnamedArgumentList: [{ type: "number", description: "Amount (e.g. 5 or -10)" }]
-    });
+    };
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({ 
+        name: 'codex-aff',
+        callback: affCallback,
+        helpString: 'Add affection to current active character. Usage: /codex-aff 10',
+        unnamedArgumentList: [{ value: "amount", description: "Amount (e.g. 10 or -5)", type: "number", isRequired: true }]
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({ 
+        name: 'codex-ann',
+        callback: annCallback,
+        helpString: 'Add annoyance to current active character. Usage: /codex-ann 5',
+        unnamedArgumentList: [{ value: "amount", description: "Amount (e.g. 5 or -10)", type: "number", isRequired: true }]
+    }));
 });
