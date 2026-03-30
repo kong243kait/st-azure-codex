@@ -1,6 +1,6 @@
-import { extension_settings, getContext } from "../../../extensions.js";
-import { SlashCommand } from "../../../slash-commands/SlashCommand.js";
-import { SlashCommandParser } from "../../../slash-commands/SlashCommandParser.js";
+import { extension_settings, getContext } from "../../extensions.js";
+import { SlashCommand } from "../../slash-commands/SlashCommand.js";
+import { SlashCommandParser } from "../../slash-commands/SlashCommandParser.js";
 
 const extensionName = "st-azure-codex";
 const extensionFolderPath = `scripts/extensions/${extensionName}`;
@@ -247,15 +247,19 @@ jQuery(async () => {
 
     // 2. Load UI HTML
     try {
-        const response = await fetch(`${extensionFolderPath}/template.html`);
-        const html = await response.text();
-        $("body").append(html);
+        const response = await fetch(`/${extensionFolderPath}/template.html`);
+        if (response.ok) {
+            const html = await response.text();
+            $("body").append(html);
+        } else {
+            console.error("Azure Codex failed to load template", response.status);
+        }
     } catch(err) {
         console.error("Azure Codex failed to load template", err);
     }
 
     // 3. Load CSS
-    $("head").append(\`<link rel="stylesheet" href="\${extensionFolderPath}/style.css">\`);
+    $("head").append(`<link rel="stylesheet" href="/${extensionFolderPath}/style.css">`);
 
     // 4. Initialize logic
     const codex = new RelationshipSystem();
