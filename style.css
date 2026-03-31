@@ -362,12 +362,40 @@
 }
 
 /* ── Inventory styles ── */
+/* ── Inventory Add Form ── */
+#azure-codex-root .ac-inv-header {
+  padding: .5rem .8rem; border-bottom: 1px solid var(--ash2);
+}
+#azure-codex-root .ac-inv-add-row {
+  display: flex; gap: .35rem; align-items: center;
+}
+#azure-codex-root .ac-inv-input {
+  flex: 1; padding: .35rem .45rem;
+  background: var(--ink); color: var(--petal);
+  border: 1px solid var(--ash2); font-size: .7rem;
+  font-family: 'Sarabun', serif; transition: border-color .2s;
+}
+#azure-codex-root .ac-inv-input:focus { border-color: var(--rose); outline: none; }
+#azure-codex-root .ac-inv-input-sm { max-width: 50px; }
+#azure-codex-root .ac-btn-add {
+  font-family: 'Cinzel', serif; font-size: .5rem;
+  letter-spacing: .08em; cursor: pointer;
+  padding: .35rem .6rem; border: 1px solid var(--ash2);
+  background: var(--ink2); color: var(--gold);
+  transition: all .25s; white-space: nowrap;
+}
+#azure-codex-root .ac-btn-add:hover {
+  border-color: var(--gold); color: var(--gold2);
+  box-shadow: 0 0 8px rgba(106,184,232,.25);
+}
+
+/* ── Inventory List ── */
 #azure-codex-root .ac-inv-list {
-  padding: .5rem 1rem; list-style: none; margin: 0;
+  padding: .4rem .6rem;
 }
 #azure-codex-root .ac-inv-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: .5rem .6rem; margin-bottom: 2px;
+  display: flex; align-items: center; gap: .5rem;
+  padding: .45rem .6rem; margin-bottom: 2px;
   background: var(--ink2); border-left: 2px solid var(--ash2);
   transition: all .2s;
 }
@@ -375,17 +403,58 @@
   background: var(--ink3); border-left-color: var(--gold);
 }
 #azure-codex-root .ac-inv-item-name {
-  font-family: 'Cinzel', serif; font-size: .7rem;
+  flex: 1; font-family: 'Cinzel', serif; font-size: .7rem;
   color: var(--petal); letter-spacing: .08em;
 }
 #azure-codex-root .ac-inv-item-qty {
   font-family: 'Cormorant Garamond', serif; font-size: .75rem;
   color: var(--gold); min-width: 30px; text-align: right;
 }
+#azure-codex-root .ac-inv-item-actions {
+  display: flex; gap: .2rem; flex-shrink: 0;
+}
+#azure-codex-root .ac-inv-use-btn,
+#azure-codex-root .ac-inv-drop-btn {
+  font-family: 'Cinzel', serif; font-size: .45rem;
+  letter-spacing: .06em; cursor: pointer;
+  padding: .2rem .45rem; border: 1px solid var(--ash);
+  background: transparent; color: var(--tx3);
+  transition: all .2s; text-transform: uppercase;
+}
+#azure-codex-root .ac-inv-use-btn:hover {
+  border-color: #4caf50; color: #66bb6a;
+  box-shadow: 0 0 6px rgba(76,175,80,.3);
+}
+#azure-codex-root .ac-inv-drop-btn:hover {
+  border-color: #e57373; color: #ef5350;
+  box-shadow: 0 0 6px rgba(229,115,115,.3);
+}
 #azure-codex-root .ac-inv-empty {
   text-align: center; padding: 2rem 1rem;
   font-family: 'Cormorant Garamond', serif; font-style: italic;
   color: var(--tx3); font-size: .8rem;
+}
+
+/* ── NPC Detail Gauge (full width bars) ── */
+#azure-codex-root .ac-gauge-detail {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .2rem .6rem;
+}
+#azure-codex-root .ac-gauge-detail .ac-gauge-label {
+  font-size: .55rem; min-width: 75px;
+}
+
+/* ── Gold Row ── */
+#azure-codex-root .sao-gold-row {
+  text-align: center;
+  font-family: 'Cinzel', serif; font-size: .8rem;
+  letter-spacing: .12em; color: #ffd740;
+  padding: .4rem 0; margin-bottom: .5rem;
+  border-bottom: 1px solid rgba(255,215,0,.1);
+}
+#azure-codex-root .sao-gold-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.1rem; font-weight: 700;
 }
 
 /* ── No-select wrapper ── */
@@ -575,35 +644,175 @@
   color: var(--blush);
   width: 40px; flex-shrink: 0;
 }
+#azure-codex-root .sao-stat-bar {
+  flex: 1; height: 6px;
+  background: var(--ash); border-radius: 3px;
+  overflow: hidden;
+}
+#azure-codex-root .sao-stat-bar-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, #1a5276, #33ccff, #6ab8e8);
+  transition: width .4s ease;
+}
 #azure-codex-root .sao-stat-value {
-  flex: 1;
   font-family: 'Cormorant Garamond', serif;
-  font-size: .95rem; font-weight: 700;
+  font-size: .85rem; font-weight: 700;
   color: var(--petal);
-  text-align: center;
+  min-width: 30px; text-align: right;
+  flex-shrink: 0;
 }
-#azure-codex-root .sao-stat-btns {
-  display: flex; gap: .15rem; flex-shrink: 0;
-}
+
+/* ── Stat +/- Buttons ── */
 #azure-codex-root .sao-stat-btn {
   width: 24px; height: 24px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent;
-  border: 1px solid var(--ash);
-  color: var(--tx3);
-  font-size: .75rem; font-weight: bold;
+  font-size: .8rem; font-weight: 700;
+  border: 1px solid var(--ash2);
+  background: var(--ink2); color: var(--blush);
+  cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: all .2s; flex-shrink: 0;
+  line-height: 1; padding: 0;
+  font-family: 'Cinzel', serif;
+}
+#azure-codex-root .sao-stat-btn:hover:not(.disabled) {
+  border-color: var(--blush); color: #fff;
+  box-shadow: 0 0 8px rgba(51,204,255,.4);
+  background: rgba(51,204,255,.1);
+}
+#azure-codex-root .sao-stat-btn.sao-stat-plus:hover:not(.disabled) {
+  border-color: #4caf50; color: #66bb6a;
+  box-shadow: 0 0 8px rgba(76,175,80,.4);
+  background: rgba(76,175,80,.1);
+}
+#azure-codex-root .sao-stat-btn.sao-stat-minus:hover:not(.disabled) {
+  border-color: #e57373; color: #ef5350;
+  box-shadow: 0 0 8px rgba(229,115,115,.4);
+  background: rgba(229,115,115,.1);
+}
+#azure-codex-root .sao-stat-btn.disabled {
+  opacity: .2; cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Clickable Stat Names ── */
+#azure-codex-root .sao-stat-clickable {
   cursor: pointer;
   transition: all .2s;
+  width: 50px;
+}
+#azure-codex-root .sao-stat-clickable:hover {
+  filter: brightness(1.4);
+  text-shadow: 0 0 8px currentColor;
+}
+
+/* ── Skills Header ── */
+#azure-codex-root .sao-skills-header {
+  font-family: 'Cinzel', serif;
+  font-size: .7rem; letter-spacing: .18em;
+  color: #6ab8e8; text-align: center;
+  padding: .7rem .5rem .4rem;
+  margin-top: .6rem;
+  border-top: 1px solid var(--ash2);
+  text-shadow: 0 0 8px rgba(106,184,232,.3);
+}
+
+/* ── Skills List ── */
+#azure-codex-root .sao-skills-list {
+  padding: 0 .5rem .3rem;
+  display: flex; flex-direction: column; gap: 3px;
+}
+#azure-codex-root .sao-skill-item {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .5rem;
+  background: rgba(51,204,255,.03);
+  border: 1px solid var(--ash2);
+  border-radius: 3px;
+  transition: all .2s; cursor: default;
+}
+#azure-codex-root .sao-skill-item:hover {
+  background: rgba(51,204,255,.08);
+  border-color: rgba(51,204,255,.2);
+}
+#azure-codex-root .sao-skill-rank {
+  font-family: 'Cinzel', serif;
+  font-size: .65rem; font-weight: 700;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid; flex-shrink: 0;
+}
+#azure-codex-root .sao-skill-info {
+  flex: 1; display: flex; flex-direction: column; gap: .1rem;
+  min-width: 0;
+}
+#azure-codex-root .sao-skill-name {
+  font-family: 'Cinzel', serif;
+  font-size: .65rem; color: var(--petal);
+  letter-spacing: .08em;
+}
+#azure-codex-root .sao-skill-from {
+  font-size: .5rem; letter-spacing: .06em;
+}
+#azure-codex-root .sao-skill-desc {
+  display: none;
+  font-family: 'Sarabun', serif;
+  font-size: .6rem; color: #8aa8c0;
+  line-height: 1.4;
+}
+#azure-codex-root .sao-skill-item:hover .sao-skill-desc {
+  display: block;
+}
+#azure-codex-root .sao-skills-empty {
+  text-align: center;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic; font-size: .75rem;
+  color: var(--tx3); padding: .8rem .5rem;
+}
+
+/* ── Next Unlock Hint ── */
+#azure-codex-root .sao-next-unlock {
+  font-family: 'Cinzel', serif;
+  font-size: .6rem; letter-spacing: .06em;
+  color: var(--tx2); text-align: center;
+  padding: .5rem .6rem; margin-top: .3rem;
+  background: rgba(255,255,255,.02);
+  border: 1px dashed var(--ash2);
+  border-radius: 3px;
+}
+
+/* ── Skill Action Bar ── */
+#azure-codex-root .sao-skill-actions {
+  display: flex; align-items: center; justify-content: center;
+  gap: .6rem; padding: .5rem; margin-top: .3rem;
+}
+#azure-codex-root .sao-skill-request-btn {
+  font-family: 'Cinzel', serif; font-size: .55rem;
+  letter-spacing: .08em; cursor: pointer;
+  padding: .35rem .7rem;
+  border: 1px solid rgba(255,215,0,.3);
+  background: rgba(255,215,0,.06); color: #ffd740;
+  transition: all .25s; white-space: nowrap;
+}
+#azure-codex-root .sao-skill-request-btn:hover {
+  border-color: #ffd740; color: #fff;
+  box-shadow: 0 0 10px rgba(255,215,0,.3);
+  background: rgba(255,215,0,.12);
+}
+#azure-codex-root .sao-skill-hint {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: .55rem; color: var(--tx3);
+  font-style: italic;
+}
+#azure-codex-root .sao-skill-remove {
+  width: 20px; height: 20px;
+  font-size: .7rem; font-weight: 700; line-height: 1;
+  border: 1px solid transparent;
+  background: transparent; color: var(--tx3);
+  cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all .2s;
   padding: 0;
 }
-#azure-codex-root .sao-stat-btn:not(:disabled):hover.sao-plus {
-  border-color: #4caf50; color: #66bb6a;
-  box-shadow: 0 0 6px rgba(76,175,80,.3);
-}
-#azure-codex-root .sao-stat-btn:not(:disabled):hover.sao-minus {
+#azure-codex-root .sao-skill-remove:hover {
   border-color: #e57373; color: #ef5350;
   box-shadow: 0 0 6px rgba(229,115,115,.3);
-}
-#azure-codex-root .sao-stat-btn:disabled {
-  opacity: .25; cursor: not-allowed;
 }
