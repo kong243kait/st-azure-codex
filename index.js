@@ -131,6 +131,7 @@ class DataEngine {
         this.inventory = [];
         this.player = DataEngine.defaultPlayer();
         this._isLoading = false;
+        this._backup = null;
     }
 
     static defaultPlayer() {
@@ -204,12 +205,18 @@ class DataEngine {
         if (!name) return null;
         const searchAlias = name.trim().toLowerCase();
         const defaultKey = DataEngine.sanitizeId(name);
-        if (this.bots[defaultKey]) return defaultKey;
+        
+        // 1. Check if ANY bot has this name exactly or as an alias first (Overrides duplicates)
         for (const [key, bot] of Object.entries(this.bots)) {
-            if (bot.aliases && bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
+            if (key === defaultKey || (bot.name && bot.name.toLowerCase() === searchAlias)) {
+                return key;
+            }
+            if (bot.aliases && bot.aliases.some(a => a.trim().toLowerCase() === searchAlias || DataEngine.sanitizeId(a) === defaultKey)) {
                 return key;
             }
         }
+        
+        // 2. If nothing matches, return the new sanitized key
         return defaultKey;
     }
 
@@ -290,9 +297,10 @@ class DataEngine {
                     bots: structuredClone(this.bots),
                     inventory: structuredClone(this.inventory),
                     player: structuredClone(this.player),
+                    _backup: structuredClone(this._backup),
                 };
             } catch {
-                cloned = JSON.parse(JSON.stringify({ bots: this.bots, inventory: this.inventory, player: this.player }));
+                cloned = JSON.parse(JSON.stringify({ bots: this.bots, inventory: this.inventory, player: this.player, _backup: this._backup }));
             }
             ctx.chatMetadata[META_KEY] = cloned;
             saveMetadataDebounced();
@@ -310,6 +318,7 @@ class DataEngine {
             }
             this.inventory = safeClone(data?.inventory) || [];
             this.player = safeClone(data?.player) || DataEngine.defaultPlayer();
+            this._backup = safeClone(data?._backup) || null;
             // Migration
             this.player.gold ??= 0;
             this.player.statPoints ??= 0;
@@ -322,8 +331,38 @@ class DataEngine {
             console.debug(LOG_PREFIX, `Loaded: ${Object.keys(this.bots).length} NPCs, Lv.${this.player.level}, Gold:${this.player.gold}, Skills:${this.player.skills.length}`);
         } catch (err) {
             console.error(LOG_PREFIX, 'Load error:', err);
-            this.bots = {}; this.inventory = []; this.player = DataEngine.defaultPlayer();
+            this.bots = {}; this.inventory = []; this.player = DataEngine.defaultPlayer(); this._backup = null;
         } finally { this._isLoading = false; }
+    }
+
+    backup() {
+        const safeClone = (obj) => obj ? JSON.parse(JSON.stringify(obj)) : null;
+        this._backup = {
+            bots: safeClone(this.bots),
+            inventory: safeClone(this.inventory),
+            player: safeClone(this.player)
+        };
+    }
+    
+    restore() {
+        if (!this._backup) return;
+        
+        // Preserve user-added aliases, nicknames, and departments across rollbacks
+        for (const [k, currentBot] of Object.entries(this.bots)) {
+            if (this._backup.bots[k]) {
+                const bBot = this._backup.bots[k];
+                bBot.aliases = currentBot.aliases ? [...currentBot.aliases] : [];
+                bBot.nickname = currentBot.nickname;
+                bBot.dept = currentBot.dept;
+                bBot.name = currentBot.name;
+            }
+        }
+        
+        const safeClone = (obj) => obj ? JSON.parse(JSON.stringify(obj)) : null;
+        this.bots = safeClone(this._backup.bots);
+        this.inventory = safeClone(this._backup.inventory);
+        this.player = safeClone(this._backup.player);
+        this.recalcDerived();
     }
 
     // ── Skills (dynamic) ──
@@ -507,7 +546,7 @@ class UIRenderer {
             for (const skill of skills) {
                 const rc = RANK_COLORS[skill.rank?.toUpperCase()] || RANK_COLORS['F'] || '#888';
                 const sInfo = skill.stat ? STAT_INFO[skill.stat.toUpperCase()] : null;
-                h += `<div class="sao-skill-item">
+                h += `<div class="sao-skill-item sao-skill-clickable" data-skill="${escAttr(skill.name)}" style="cursor:pointer">
                     <span class="sao-skill-rank" style="color:${rc};border-color:${rc}">${esc(skill.rank || '?')}</span>
                     <div class="sao-skill-info">
                         <span class="sao-skill-name">${esc(skill.name)}</span>
@@ -581,6 +620,14 @@ class UIRenderer {
         el.querySelectorAll('.sao-stat-clickable').forEach(b =>
             b.addEventListener('click', (e) => { e.stopPropagation(); cb.onStatInfo?.(e.currentTarget.dataset.stat); })
         );
+        // Clickable skills -> detail popup
+        el.querySelectorAll('.sao-skill-clickable').forEach(b =>
+            b.addEventListener('click', (e) => {
+                if (/** @type {HTMLElement} */(e.target).classList.contains('sao-skill-remove')) return;
+                e.stopPropagation();
+                cb.onSkillInfo?.(e.currentTarget.dataset.skill);
+            })
+        );
         // Skill remove buttons
         el.querySelectorAll('.sao-skill-remove').forEach(b =>
             b.addEventListener('click', (e) => { e.stopPropagation(); cb.onRemoveSkill?.(e.currentTarget.dataset.skill); })
@@ -599,6 +646,7 @@ class AzureCodexController {
         this.detector = new StatDetector();
         this._initialized = false;
         this._eventsRegistered = false; // FIX: guard against double registration
+        this.lastProcessedIdx = -1;
 
         // FIX: UIRenderer uses callbacks, no global reference
         this.ui = new UIRenderer(this.data, {
@@ -672,6 +720,21 @@ class AzureCodexController {
                 html += `</div>`;
                 callGenericPopup(html, POPUP_TYPE.TEXT);
             },
+            onSkillInfo: (name) => {
+                const skill = this.data.player.skills.find(s => s.name === name);
+                if (!skill) return;
+                const rc = RANK_COLORS[skill.rank?.toUpperCase()] || '#8aa8c0';
+                const html = `<div style="font-family:'Cinzel',serif;text-align:center;padding:.5rem 0">
+                    <div style="font-size:1.6rem;margin-bottom:.3rem;color:${rc}">⚡</div>
+                    <div style="font-size:1.1rem;color:${rc};letter-spacing:.15em;font-weight:700">${UIRenderer.esc(skill.name)}</div>
+                    <div style="font-size:.85rem;color:#8aa8c0;margin:.2rem 0">[ Rank: ${UIRenderer.esc(skill.rank || '?')} ]</div>
+                    <hr style="border:none;border-top:1px solid #182a3d;margin:.6rem 0">
+                    <div style="font-size:.9rem;color:#d0e6f0;line-height:1.5;text-align:left;padding:0 .5rem">
+                        ${UIRenderer.esc(skill.desc || 'ไม่มีคำอธิบายสกิล')}
+                    </div>
+                </div>`;
+                callGenericPopup(html, POPUP_TYPE.TEXT);
+            },
             onRemoveSkill: (name) => {
                 const ok = this.data.removeSkill(name);
                 if (ok) {
@@ -700,14 +763,24 @@ class AzureCodexController {
         const boldRx = new RegExp(BOLD_RX_SRC, 'g');
         const allNames = [];
         let m;
+        
+        let playerName = '';
+        try { playerName = (getContext().name1 || '').trim().toLowerCase(); } catch(e){}
+
         while ((m = boldRx.exec(text)) !== null) {
             const name = m[1].trim();
-            if (name.length >= 2 && !COMMON_WORDS.has(name.toLowerCase())) {
+            const lower = name.toLowerCase();
+            
+            if (lower === playerName) continue;
+            if (COMMON_WORDS.has(lower) || KNOWN_STATS.has(lower) || STAT_IGNORE_WORDS.has(lower) || NOT_ITEMS.has(lower)) continue;
+            
+            if (name.length >= 2) {
                 allNames.push(name);
             }
         }
-        const hasThaiNames = allNames.some(n => THAI_RX.test(n));
-        const detected = hasThaiNames ? allNames.filter(n => THAI_RX.test(n)) : allNames;
+        
+        // Removed strictly Thai filter to allow bilingual RPGs (English NPCs with Thai Player)
+        const detected = allNames;
 
         const promoted = [];
         let changed = false;
@@ -990,33 +1063,81 @@ class AzureCodexController {
     // ── Skill Detection ──
     detectSkillsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
-        // Patterns: "[Skill Learned: X]" "Skill Unlocked: X" "เรียนรู้สกิล: X" "ปลดล็อกสกิล: X" "ได้รับสกิล X" "New Skill: X"
-        const skillPatterns = [
-            /(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่)[:\s!]+\**([^\n*\]]{2,40})\**/gi,
-            /\[(?:Skill|สกิล)[:\s]+([^\]]{2,40})\]/gi,
-            /⚡\s*(?:Skill|สกิล)[:\s]+\**([^\n*]{2,40})\**/gi,
-        ];
-        // Also detect rank: "[Rank: A]" or "Rank A" or "[A]" after skill name
-        const rankRx = /(?:Rank|แรงค์|เกรด)[:\s]*([A-Z]{1,3})/i;
-
         let changed = false;
-        for (const rx of skillPatterns) {
-            const pat = new RegExp(rx.source, rx.flags);
-            let m;
-            while ((m = pat.exec(text)) !== null) {
-                let skillName = m[1].trim().replace(/\*+/g, '');
-                if (skillName.length < 2 || skillName.length > 50) continue;
-                // Try to extract rank from nearby text
-                const nearbyText = text.substring(Math.max(0, m.index - 20), Math.min(text.length, m.index + m[0].length + 40));
-                const rankMatch = nearbyText.match(rankRx);
-                const rank = rankMatch ? rankMatch[1].toUpperCase() : '?';
-                const isNew = this.data.addSkill(skillName, rank, '', '');
-                if (isNew) {
+
+        // 1. Single-line formats: "Skill Learned: Fireball - Desc"
+        const singleLineRx = /(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained|Gain)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่|ความสามารถใหม่)\s*[:：!\-]+\s*\**([^\n*:(]{2,50}?)\**\s*(?:[-:：(]\s*([^\n]{5,150}))?(?:$|\n|\r|\])/gi;
+        const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ|Lv|Level)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
+
+        let m;
+        while ((m = singleLineRx.exec(text)) !== null) {
+            let rawName = m[1].trim().replace(/\*+/g, '');
+            rawName = rawName.replace(/[)\]]+$/, '').trim();
+            if (rawName.length < 2 || rawName.length > 50) continue;
+
+            let desc = (m[2] || '').trim();
+            desc = desc.replace(/^[)\]]+/, '').trim(); // clean leftover bracket
+            
+            const nearby = text.substring(Math.max(0, m.index - 30), Math.min(text.length, m.index + 100));
+            const rm = nearby.match(rankRx);
+            const rank = rm ? rm[1].toUpperCase() : '?';
+
+            // Extract rank from desc if present
+            const innerRm = desc.match(rankRx);
+            let finalRank = rank;
+            if (innerRm) {
+                finalRank = innerRm[1].toUpperCase();
+                desc = desc.replace(innerRm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+            }
+
+            const isNew = this.data.addSkill(rawName, finalRank, desc, '');
+            if (isNew) {
+                changed = true;
+                if (!isBulk) notify('success', `เรียนรู้: ${rawName} [${finalRank}]`, '⚡ New Skill!', { timeOut: 4000 });
+            } else if (desc) {
+                const existing = this.data.player.skills.find(s => s.name.toLowerCase() === rawName.toLowerCase());
+                if (existing && (!existing.desc || existing.desc.length < desc.length)) {
+                    existing.desc = desc;
                     changed = true;
-                    if (!isBulk) notify('success', `เรียนรู้: ${skillName} [${rank}]`, '⚡ New Skill!', { timeOut: 4000 });
                 }
             }
         }
+
+        // 2. Bullet list format: Match a header like "Skills:" then lines starting with "-"
+        const listHeaderRx = /(?:Skills?|Active Skills|Passive Skills|ความสามารถ|สกิล|ทักษะ)\s*[:：]\s*\n((?:[\s*]*[-•*]\s*[^\n]+\n?)+)/gi;
+        let mList;
+        while ((mList = listHeaderRx.exec(text)) !== null) {
+            const listBlock = mList[1];
+            const itemRx = /[-•*]\s*\**([^\n*:(]{2,50}?)\**\s*(?:[-:：(]\s*([^\n]{5,150}))?/gi;
+            let mItem;
+            while ((mItem = itemRx.exec(listBlock)) !== null) {
+                let sName = mItem[1].trim().replace(/\*+/g, '');
+                let sDesc = (mItem[2] || '').trim();
+                sName = sName.replace(/[)\]]+$/, '').trim();
+                sDesc = sDesc.replace(/^[)\]]+/, '').trim();
+                if (sName.length < 2 || sName.length > 50) continue;
+                
+                const rm = sDesc.match(rankRx) || sName.match(rankRx);
+                const sRank = rm ? rm[1].toUpperCase() : '?';
+                if (rm) {
+                    sDesc = sDesc.replace(rm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+                    sName = sName.replace(rm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+                }
+
+                const isNew = this.data.addSkill(sName, sRank, sDesc, '');
+                if (isNew) {
+                    changed = true;
+                    if (!isBulk) notify('success', `จำสกิล: ${sName} [${sRank}]`, '⚡ Skill Synced', { timeOut: 3000 });
+                } else if (sDesc) {
+                    const existing = this.data.player.skills.find(s => s.name.toLowerCase() === sName.toLowerCase());
+                    if (existing && (!existing.desc || existing.desc.length < sDesc.length)) {
+                        existing.desc = sDesc;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
         if (changed && !isBulk) this.saveAndRender();
     }
 
@@ -1048,27 +1169,46 @@ class AzureCodexController {
             </div>
         </div>`;
 
+        let newAff = bot.affection;
+        let newAnn = bot.annoyance;
+        let newNick = bot.nickname;
+        let newDept = bot.dept;
+        let newAlias = (bot.aliases || []).join(', ');
+
         setTimeout(() => {
+            document.getElementById('ac-edit-nickname')?.addEventListener('input', e => newNick = /** @type {HTMLInputElement} */ (e.target).value);
+            document.getElementById('ac-edit-dept')?.addEventListener('input', e => newDept = /** @type {HTMLInputElement} */ (e.target).value);
+            document.getElementById('ac-edit-aliases')?.addEventListener('input', e => newAlias = /** @type {HTMLInputElement} */ (e.target).value);
+
             document.getElementById('ac-edit-affection')?.addEventListener('input', e => {
-                const v = document.getElementById('ac-edit-aff-val'); if (v) v.textContent = /** @type {HTMLInputElement} */ (e.target).value;
+                newAff = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
+                const v = document.getElementById('ac-edit-aff-val'); if (v) v.textContent = String(newAff);
             });
             document.getElementById('ac-edit-annoyance')?.addEventListener('input', e => {
-                const v = document.getElementById('ac-edit-ann-val'); if (v) v.textContent = /** @type {HTMLInputElement} */ (e.target).value;
+                newAnn = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
+                const v = document.getElementById('ac-edit-ann-val'); if (v) v.textContent = String(newAnn);
             });
         }, 100);
 
         const ok = await callGenericPopup(html, POPUP_TYPE.CONFIRM);
         if (!ok) return;
 
-        bot.nickname = /** @type {HTMLInputElement} */ (document.getElementById('ac-edit-nickname'))?.value?.trim() || bot.nickname;
-        bot.dept = /** @type {HTMLInputElement} */ (document.getElementById('ac-edit-dept'))?.value?.trim() || bot.dept;
-        const aliasRaw = /** @type {HTMLInputElement} */ (document.getElementById('ac-edit-aliases'))?.value || '';
-        bot.aliases = aliasRaw.split(',').map(s => s.trim()).filter(Boolean);
+        bot.nickname = newNick?.trim() || bot.nickname;
+        bot.dept = newDept?.trim() || bot.dept;
+        bot.aliases = (newAlias || '').split(',').map(s => s.trim()).filter(Boolean);
 
-        this.data.setRelationship(npcId,
-            parseInt(/** @type {HTMLInputElement} */ (document.getElementById('ac-edit-affection'))?.value) || 0,
-            parseInt(/** @type {HTMLInputElement} */ (document.getElementById('ac-edit-annoyance'))?.value) || 0,
-        );
+        this.data.setRelationship(npcId, newAff, newAnn);
+        
+        // Preserve manual edits into the backup state to survive Swipes
+        if (this.data._backup?.bots?.[npcId]) {
+            const bBot = this.data._backup.bots[npcId];
+            bBot.nickname = bot.nickname;
+            bBot.dept = bot.dept;
+            bBot.aliases = [...bot.aliases];
+            bBot.affection = bot.affection;
+            bBot.annoyance = bot.annoyance;
+        }
+
         this.saveAndRender();
         notify('info', `${bot.nickname} updated`, '✦ NPC Edited');
     }
@@ -1238,11 +1378,20 @@ class AzureCodexController {
 
         eventSource.on(event_types.CHAT_CHANGED, () => {
             this.data.load(); this.ui.activeTab = 'all'; this.ui.selectedNpc = null; this.ui.render();
+            this.lastProcessedIdx = -1;
             setTimeout(() => {
                 try {
                     const chat = getContext().chat;
                     if (!Array.isArray(chat)) return;
                     
+                    this.lastProcessedIdx = chat.length - 1;
+
+                    // Automatically sync skills from the player's Persona
+                    try {
+                        const personaStr = String(getContext().chatMetadata?.user_persona || getContext().user_persona || '');
+                        if (personaStr) this.detectSkillsFromMessage(personaStr, true);
+                    } catch(e) {}
+
                     // BUG FIX: Zero out appearances before recounting to prevent unbounded accumulation
                     for (const bot of Object.values(this.data.bots)) {
                         bot.appearances = 0;
@@ -1262,9 +1411,27 @@ class AzureCodexController {
             try {
                 const msg = getContext().chat?.[idx];
                 if (!msg || msg.is_user || msg.is_system) return;
+
+                if (idx === this.lastProcessedIdx) {
+                    this.data.restore();
+                } else if (idx > this.lastProcessedIdx) {
+                    this.data.backup();
+                } else {
+                    return; // Ignore older messages to prevent double-applying
+                }
+
                 // Live messages get full processing
                 this.processMessageLive(msg.mes);
+                this.lastProcessedIdx = idx;
             } catch (err) { console.warn(LOG_PREFIX, 'Message error:', err); }
+        });
+
+        eventSource.on(event_types.MESSAGE_DELETED, (idx) => {
+            if (idx === this.lastProcessedIdx) {
+                this.data.restore();
+                this.lastProcessedIdx = idx - 1;
+                this.saveAndRender();
+            }
         });
     }
 
