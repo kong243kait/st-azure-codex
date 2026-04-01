@@ -1,11 +1,11 @@
 {
-    "display_name": "Azure Codex – NPC Tracker",
+    "display_name": "Azure Codex – Universal RPG Tracker",
     "loading_order": 100,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "AzureCodex",
-    "version": "1.0.0",
+    "version": "3.2.0",
     "homePage": ""
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /*
  * ═══════════════════════════════════════════
  *  Azure Codex – NPC & Player Tracker
@@ -10,7 +11,7 @@ import { getContext, extension_settings, renderExtensionTemplateAsync, saveMetad
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
-import { eventSource, event_types, saveSettingsDebounced } from '../../../../script.js';
+import { eventSource, event_types, saveSettingsDebounced, generateQuietPrompt, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
 import { POPUP_TYPE, callGenericPopup } from '../../../popup.js';
 
 /** @type {any} */
@@ -135,13 +136,24 @@ class DataEngine {
     }
 
     static defaultPlayer() {
+        /** @type {Object<string, number>} */
+        const stats = { STR: 5, AGI: 5, VIT: 5, INT: 5, DEX: 5, LUK: 5 };
         return {
             level: 1, exp: 0, expMax: 100,
             hp: BASE_HP + 5 * HP_PER_VIT, hpMax: BASE_HP + 5 * HP_PER_VIT,
             mp: BASE_MP + 5 * MP_PER_INT, mpMax: BASE_MP + 5 * MP_PER_INT,
             gold: 0, statPoints: 0,
-            stats: { STR: 5, AGI: 5, VIT: 5, INT: 5, DEX: 5, LUK: 5 },
-            skills: [], // Dynamic: { name, rank, desc, stat? }
+            stats,
+            skills: /** @type {Array<{name:string, rank:string, desc:string, stat:string, mpCost:number}>} */ ([]),
+            skillTrees: /** @type {Object<string, Array<{name:string, rank:string, req:number, desc:string}>>} */ ({}),
+            conditions: /** @type {Array<{name:string, turnsLeft:number, effect:string}>} */ ([]),
+            equipment: /** @type {Array<{slot:string, name:string, bonus:string}>} */ ([]),
+            universe: {
+                levelName: 'Level',
+                levelDisplay: '1',
+                expName: 'EXP',
+                statNames: /** @type {string[]} */ (['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'])
+            }
         };
     }
 
@@ -163,8 +175,12 @@ class DataEngine {
 
     recalcDerived() {
         const p = this.player;
-        p.hpMax = BASE_HP + (p.stats.VIT * HP_PER_VIT);
-        p.mpMax = BASE_MP + (p.stats.INT * MP_PER_INT);
+        // Use dynamic stat names; fall back to VIT/INT for standard RPG, or first two stats for other universes
+        const sn = p.universe?.statNames || ['STR','AGI','VIT','INT','DEX','LUK'];
+        const vitStat = sn.includes('VIT') ? 'VIT' : sn[2] || sn[0];
+        const intStat = sn.includes('INT') ? 'INT' : sn[3] || sn[1];
+        p.hpMax = BASE_HP + ((p.stats[vitStat] || 5) * HP_PER_VIT);
+        p.mpMax = BASE_MP + ((p.stats[intStat] || 5) * MP_PER_INT);
         p.hp = Math.min(p.hp, p.hpMax);
         p.mp = Math.min(p.mp, p.mpMax);
     }
@@ -183,7 +199,7 @@ class DataEngine {
 
     allocateStat(name, amt = 1) {
         const p = this.player;
-        if (!SAO_STATS.includes(name) || p.statPoints < amt) return false;
+        if (!this.player.universe.statNames.includes(name) || p.statPoints < amt) return false;
         p.stats[name] += amt;
         p.statPoints -= amt;
         this.recalcDerived();
@@ -192,7 +208,7 @@ class DataEngine {
 
     deallocateStat(name, amt = 1) {
         const p = this.player;
-        if (!SAO_STATS.includes(name) || p.stats[name] <= 1) return false;
+        if (!this.player.universe.statNames.includes(name) || p.stats[name] <= 1) return false;
         const actual = Math.min(amt, p.stats[name] - 1);
         p.stats[name] -= actual;
         p.statPoints += actual;
@@ -206,7 +222,7 @@ class DataEngine {
         const searchAlias = name.trim().toLowerCase();
         const defaultKey = DataEngine.sanitizeId(name);
         
-        // 1. Check if ANY bot has this name exactly or as an alias first (Overrides duplicates)
+        // 1. Exact match: key, name, or alias
         for (const [key, bot] of Object.entries(this.bots)) {
             if (key === defaultKey || (bot.name && bot.name.toLowerCase() === searchAlias)) {
                 return key;
@@ -216,7 +232,41 @@ class DataEngine {
             }
         }
         
-        // 2. If nothing matches, return the new sanitized key
+        // 2. Fuzzy match: substring containment ("Naruto" matches "Naruto Uzumaki", "นารูโตะ" matches "นารูโตะ อุซึมากิ")
+        if (searchAlias.length >= 3) {
+            for (const [key, bot] of Object.entries(this.bots)) {
+                const botName = (bot.name || '').toLowerCase();
+                const botNick = (bot.nickname || '').toLowerCase();
+                // Check if search term contains or is contained by existing bot name/nickname
+                if (botName.length >= 3 && (botName.includes(searchAlias) || searchAlias.includes(botName))) {
+                    // Auto-add as alias for instant future matching
+                    if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
+                        bot.aliases.push(name.trim());
+                    }
+                    return key;
+                }
+                if (botNick.length >= 3 && botNick !== botName && (botNick.includes(searchAlias) || searchAlias.includes(botNick))) {
+                    if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
+                        bot.aliases.push(name.trim());
+                    }
+                    return key;
+                }
+                // Check all aliases for substring match
+                if (bot.aliases) {
+                    for (const alias of bot.aliases) {
+                        const al = alias.trim().toLowerCase();
+                        if (al.length >= 3 && (al.includes(searchAlias) || searchAlias.includes(al))) {
+                            if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
+                                bot.aliases.push(name.trim());
+                            }
+                            return key;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 3. If nothing matches, return the new sanitized key
         return defaultKey;
     }
 
@@ -255,12 +305,25 @@ class DataEngine {
     }
 
     // ── Inventory ──
-    addItem(name, qty = 1) {
+    addItem(name, qty = 1, type = '') {
         const n = name?.trim();
-        if (!n) return;
+        if (!n || n.length < 2 || n.length > 50) return;
+        // Reject junk: all-punctuation, all-digits, all-whitespace, or common noise
+        if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(n)) return;
+        if (/^\d+$/.test(n)) return;
+        // Auto-classify item type if not provided
+        if (!type) {
+            if (/(?:sword|blade|shield|armor|gun|bow|ring|necklace|helmet|boots|gauntlet|robe|staff|wand|spear|axe|ดาบ|โล่|เกราะ|อาวุธ|ปืน|ธนู|แหวน|สร้อย|หมวก|รองเท้า|ถุงมือ|เสื้อคลุม|ไม้เท้า|ขวาน)/i.test(n)) {
+                type = 'equip';
+            } else if (/(?:potion|elixir|food|herb|scroll|pill|berry|antidote|bandage|medicine|ยา|อาหาร|สมุนไพร|ยาแก้พิษ|ผลไม้|ขนมปัง|ม้วน|เลือด|รักษา|เวทมนต์)/i.test(n)) {
+                type = 'consumable';
+            } else {
+                type = 'misc';
+            }
+        }
         const existing = this.inventory.find(i => i.name.toLowerCase() === n.toLowerCase());
-        if (existing) existing.qty += qty;
-        else this.inventory.push({ name: n, qty });
+        if (existing) { existing.qty += qty; }
+        else this.inventory.push({ name: n, qty, type });
     }
 
     removeItem(name, qty = 1) {
@@ -302,9 +365,74 @@ class DataEngine {
             } catch {
                 cloned = JSON.parse(JSON.stringify({ bots: this.bots, inventory: this.inventory, player: this.player, _backup: this._backup }));
             }
+            if (!cloned.player.skillTrees) cloned.player.skillTrees = {};
             ctx.chatMetadata[META_KEY] = cloned;
             saveMetadataDebounced();
+            
+            this.injectTrackerContext();
         } catch (err) { console.error(LOG_PREFIX, 'Save error:', err); }
+    }
+
+    injectTrackerContext() {
+        if (!this.player) return;
+        const p = this.player;
+        const statList = p.universe?.statNames || SAO_STATS;
+        
+        // ── Build comprehensive status block ──
+        let text = `[RPG Tracker — Live Player Status]\n`;
+        text += `${p.universe?.levelName || 'Level'}: ${p.universe?.levelDisplay || p.level || 1}\n`;
+        text += `HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | Gold: ${p.gold}\n`;
+        
+        // KO/Death state
+        if (p.hp <= 0) {
+            text += `⚠ PLAYER IS UNCONSCIOUS/KO (HP=0). The player CANNOT fight, cast spells, or take any active action until healed or revived.\n`;
+        } else if (p.hp <= p.hpMax * 0.2) {
+            text += `⚠ PLAYER IS CRITICALLY INJURED (HP < 20%). Physical actions should be weakened.\n`;
+        }
+        if (p.mp <= 0) {
+            text += `⚠ PLAYER HAS NO MANA (MP=0). Cannot cast any magic/skill that costs MP.\n`;
+        }
+        
+        // Stats
+        text += `Stats:\n${statList.map(k => `- ${k.toUpperCase()}: ${p.stats[k] || 0}`).join('\n')}\n`;
+        
+        // Active Conditions
+        if (p.conditions && p.conditions.length > 0) {
+            text += `Active Conditions:\n${p.conditions.map(c => `- ${c.name}: ${c.effect}${c.turnsLeft > 0 ? ` (${c.turnsLeft} turns left)` : ''}`).join('\n')}\n`;
+        }
+        
+        // Equipment
+        if (p.equipment && p.equipment.length > 0) {
+            text += `Equipped Gear:\n${p.equipment.map(e => `- [${e.slot}] ${e.name}${e.bonus ? ` (${e.bonus})` : ''}`).join('\n')}\n`;
+        }
+        
+        // Skills with MP costs
+        if (p.skills && p.skills.length > 0) {
+            text += `Learned Skills:\n${p.skills.map(s => {
+                let line = `- [${s.rank || 'F'}] ${s.name}`;
+                if (s.mpCost) line += ` (MP Cost: ${s.mpCost})`;
+                if (s.stat) line += ` [Requires: ${s.stat}]`;
+                if (s.desc) line += `: ${s.desc}`;
+                return line;
+            }).join('\n')}\n`;
+        }
+        
+        // Inventory
+        if (this.inventory && this.inventory.length > 0) {
+            text += `Inventory:\n${this.inventory.map(i => `- ${i.name} x${i.qty || 1}${i.type ? ` [${i.type}]` : ''}`).join('\n')}\n`;
+        }
+        
+        text += `\n[System Policy: STRICT ENFORCEMENT.`;
+        text += ` The player can ONLY perform actions that align with their current Level (${p.level}), Stats, and Learned Skills listed above.`;
+        if (p.hp <= 0) {
+            text += ` THE PLAYER IS UNCONSCIOUS — they CANNOT act, fight, or cast anything. Narrate them as incapacitated until revived.`;
+        }
+        text += ` If the player attempts an action beyond their capabilities or claims unlisted powers, FAIL the attempt organically in the narrative.`;
+        text += ` Skills that cost MP cannot be used if MP is insufficient. Do not allow God-moding or stat cheating.]`;
+        
+        if (typeof setExtensionPrompt === 'function') {
+            setExtensionPrompt('azure_codex_tracker', text, extension_prompt_types.IN_CHAT, 1, false);
+        }
     }
 
     load() {
@@ -322,16 +450,20 @@ class DataEngine {
             // Migration
             this.player.gold ??= 0;
             this.player.statPoints ??= 0;
-            this.player.stats ??= { STR: 5, AGI: 5, VIT: 5, INT: 5, DEX: 5, LUK: 5 };
             this.player.skills ??= []; // Migration: add skills array
-            for (const s of SAO_STATS) {
-                this.player.stats[s] ??= 5;
+            this.player.skillTrees ??= {}; 
+            this.player.universe ??= { levelName: 'Level', levelDisplay: String(this.player.level || '1'), expName: 'EXP', statNames: ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'] };
+            if (!this.player.stats || typeof this.player.stats !== 'object') this.player.stats = /** @type {Object<string,number>} */ ({});
+            for (const s of this.player.universe.statNames) {
+                if (this.player.stats[s] == null) this.player.stats[s] = 5;
             }
             this.recalcDerived();
             console.debug(LOG_PREFIX, `Loaded: ${Object.keys(this.bots).length} NPCs, Lv.${this.player.level}, Gold:${this.player.gold}, Skills:${this.player.skills.length}`);
+            this.injectTrackerContext();
         } catch (err) {
             console.error(LOG_PREFIX, 'Load error:', err);
             this.bots = {}; this.inventory = []; this.player = DataEngine.defaultPlayer(); this._backup = null;
+            this.injectTrackerContext();
         } finally { this._isLoading = false; }
     }
 
@@ -368,8 +500,14 @@ class DataEngine {
     // ── Skills (dynamic) ──
     addSkill(name, rank = '?', desc = '', stat = '') {
         const n = name?.trim();
-        if (!n || n.length < 1 || n.length > 60) return false;
-        const existing = this.player.skills.find(s => s.name.toLowerCase() === n.toLowerCase());
+        if (!n || n.length < 2 || n.length > 60) return false;
+        // Reject junk: all-punctuation, all-digits, noise keywords
+        if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(n)) return false;
+        if (/^\d+$/.test(n)) return false;
+        // Reject if the "name" is just a common keyword or formatting artifact
+        const lower = n.toLowerCase();
+        if (/^(skill|สกิล|rank|แรงค์|desc|description|คำอธิบาย|req|requirement|level|type|class|stat|none|null|undefined|n\/a|no name|-+|\?+)$/i.test(lower)) return false;
+        const existing = this.player.skills.find(s => s.name.toLowerCase() === lower);
         if (existing) {
             // Update rank/desc if provided
             if (rank && rank !== '?') existing.rank = rank;
@@ -513,23 +651,30 @@ class UIRenderer {
         const goldStr = (p.gold ?? 0).toLocaleString();
 
         h += `<div class="sao-status">
-            <div class="sao-level-badge">Lv. ${p.level}</div>
+            <div class="sao-level-badge" title="${esc(p.universe?.levelName || 'Level')}">${esc(p.universe?.levelName || 'Level')} ${esc(p.universe?.levelDisplay || p.level || '1')}</div>
             <div class="sao-bars">
                 <div class="sao-bar-row"><span class="sao-bar-label hp-label">HP</span><div class="sao-bar"><div class="sao-bar-fill sao-hp" style="width:${hpPct}%"></div></div><span class="sao-bar-val">${p.hp} / ${p.hpMax}</span></div>
                 <div class="sao-bar-row"><span class="sao-bar-label mp-label">MP</span><div class="sao-bar"><div class="sao-bar-fill sao-mp" style="width:${mpPct}%"></div></div><span class="sao-bar-val">${p.mp} / ${p.mpMax}</span></div>
-                <div class="sao-bar-row"><span class="sao-bar-label exp-label">EXP</span><div class="sao-bar"><div class="sao-bar-fill sao-exp" style="width:${expPct}%"></div></div><span class="sao-bar-val">${p.exp} / ${p.expMax}</span></div>
+                <div class="sao-bar-row"><span class="sao-bar-label exp-label" title="${esc(p.universe?.expName || 'EXP')}">${esc((p.universe?.expName || 'EXP').substring(0,3))}</span><div class="sao-bar"><div class="sao-bar-fill sao-exp" style="width:${expPct}%"></div></div><span class="sao-bar-val">${p.exp} / ${p.expMax}</span></div>
             </div>
             <div class="sao-gold-row">💰 <span class="sao-gold-val">${goldStr}</span> Gold</div>
+            ${p.hp <= 0 ? `<div class="sao-points-banner" style="color:#ef5350;border-color:rgba(239,83,80,.3);background:rgba(239,83,80,.06);animation:none;">💀 PLAYER KO — HP = 0</div>` : ''}
+            ${p.conditions && p.conditions.length > 0 ? `<div class="sao-conditions-row">${p.conditions.map(c => {
+                const isDebuff = ['Poisoned','Stunned','Burning','Frozen','Paralyzed','Weakened','Blinded'].includes(c.name);
+                return `<span class="sao-condition-badge ${isDebuff ? 'debuff' : 'buff'}" title="${esc(c.effect)}">${isDebuff ? '💀' : '✨'} ${esc(c.name)} (${c.turnsLeft})</span>`;
+            }).join('')}</div>` : ''}
             ${p.statPoints > 0 ? `<div class="sao-points-banner">⚡ UNUSED STAT POINTS: <b>${p.statPoints}</b></div>` : ''}
             <div class="sao-stats-grid">`;
-        for (const stat of SAO_STATS) {
+            
+        const currentStats = p.universe?.statNames || SAO_STATS;
+        for (const stat of currentStats) {
             const val = p.stats[stat] ?? 0;
             const canPlus = p.statPoints > 0;
             const canMinus = val > 1;
-            const info = STAT_INFO[stat];
+            const info = STAT_INFO[stat] || { name: stat, desc: 'Dynamic Universal Attribute', icon: '✨', color: '#6ab8e8' };
             h += `<div class="sao-stat-row">
                 <button class="sao-stat-btn sao-stat-minus ${canMinus ? '' : 'disabled'}" data-stat="${stat}" ${canMinus ? '' : 'disabled'}>−</button>
-                <span class="sao-stat-name sao-stat-clickable" data-stat="${stat}" style="color:${info.color}" title="Click for details">${info.icon} ${stat}</span>
+                <span class="sao-stat-name sao-stat-clickable" data-stat="${stat}" style="color:${info.color}" title="${esc(info.desc)}">${info.icon} ${stat}</span>
                 <div class="sao-stat-bar"><div class="sao-stat-bar-fill" style="width:${Math.min(100, val)}%;background:linear-gradient(90deg,${info.color}44,${info.color})"></div></div>
                 <span class="sao-stat-value">${val}</span>
                 <button class="sao-stat-btn sao-stat-plus ${canPlus ? '' : 'disabled'}" data-stat="${stat}" ${canPlus ? '' : 'disabled'}>+</button>
@@ -558,9 +703,12 @@ class UIRenderer {
             }
         }
         h += `</div>`;
-        h += `<div class="sao-skill-actions">
-            <button class="sao-skill-request-btn" title="ส่งข้อความไปในแชทเพื่อขอสกิลใหม่">✨ ขอสกิลใหม่</button>
-            <span class="sao-skill-hint">/skill-add [name] [rank] [desc]</span>
+        h += `<div class="sao-skill-actions" style="display:flex; flex-direction:column; gap:0.4rem; margin-top:0.5rem;">
+            <div style="display:flex; gap:0.4rem; justify-content:center;">
+                <button class="sao-skill-request-btn" title="ส่งคำสั่ง AI เบื้องหลังสร้างระบบสกิลใหม่" style="flex:1;">✨ ขอผังทักษะ</button>
+                <button class="sao-sync-universe-btn" title="อิงเทียร์สเตตัสให้เข้ากับเรื่องราวของบอทปัจจุบันอัตโนมัติ" style="flex:1;">🌐 Sync Universe</button>
+            </div>
+            <span class="sao-skill-hint" style="text-align:center;">/skill-add [name] [rank] [desc]</span>
         </div>`;
 
         h += `</div></div>`;
@@ -634,6 +782,8 @@ class UIRenderer {
         );
         // Request skill button
         el.querySelector('.sao-skill-request-btn')?.addEventListener('click', () => cb.onRequestSkill?.());
+        // Sync Universe button
+        el.querySelector('.sao-sync-universe-btn')?.addEventListener('click', () => cb.onSyncUniverse?.());
     }
 }
 
@@ -688,37 +838,77 @@ class AzureCodexController {
                     notify('warning', `${stat} is already at minimum!`, '⚠ Cannot Remove');
                 }
             },
-            onStatInfo: (stat) => {
+            onStatInfo: async (stat) => {
                 const info = STAT_INFO[stat];
                 const val = this.data.player.stats[stat] ?? 0;
                 if (!info) return;
-                const learnedSkills = (this.data.player.skills || []).filter(s => s.stat?.toUpperCase() === stat);
 
-                let html = `<div style="font-family:'Cinzel',serif;text-align:center;padding:.5rem 0">
+                if (!this.data.player.skillTrees) this.data.player.skillTrees = {};
+                let treeTokens = this.data.player.skillTrees[stat];
+
+                const learnedSkills = (this.data.player.skills || []);
+
+                let html = `<div style="font-family:'Cinzel',serif;text-align:center;padding:.5rem 0" class="ac-skill-tree-modal">
                     <div style="font-size:1.6rem;margin-bottom:.3rem">${info.icon}</div>
                     <div style="font-size:1.1rem;color:${info.color};letter-spacing:.15em;font-weight:700">${stat} — ${info.name}</div>
                     <div style="font-size:.78rem;color:#8aa8c0;margin:.4rem 0 .2rem">${info.desc}</div>
                     <div style="font-size:.85rem;color:${info.color};margin:.4rem 0 .8rem">Current: <b>${val}</b></div>
                     <hr style="border:none;border-top:1px solid #182a3d;margin:.6rem 0">
-                    <div style="font-size:.82rem;color:#6ab8e8;letter-spacing:.12em;margin-bottom:.6rem">⚡ LEARNED SKILLS (${stat})</div>`;
+                    <div style="font-size:.82rem;color:#6ab8e8;letter-spacing:.12em;margin-bottom:.6rem">⚡ ${stat} SKILL TREE</div>
+                    <div style="display:flex; flex-direction:column; gap:0.5rem; max-height: 400px; overflow-y:auto; padding-right:5px;">`;
 
-                if (learnedSkills.length === 0) {
-                    html += `<div style="font-size:.72rem;color:#445;font-style:italic;padding:.5rem 0">ยังไม่มีสกิลที่เรียนรู้สำหรับ ${stat}</div>`;
+                if (!treeTokens || treeTokens.length === 0) {
+                    html += `<div style="font-size:.8rem;color:#ff8888;padding:1rem 0;line-height:1.5;">ยังไม่มีระเบียนผังทักษะสำหรับคลาสของคุณ<br><br><span style="color:#8aa8c0;font-size:0.75rem;">กรุณากดปุ่ม <b>"✨ ขอสกิลใหม่"</b> ในหน้าต่าง Tracker<br>เพื่อให้ระบบประมวลผลผังทักษะทั้งหมดก่อนครับ</span></div>`;
                 } else {
-                    for (const skill of learnedSkills) {
-                        const rc = RANK_COLORS[skill.rank?.toUpperCase()] || '#888';
-                        html += `<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .5rem;margin:.25rem 0;background:rgba(51,204,255,.06);border:1px solid ${rc}44;border-radius:4px">
-                            <span style="font-size:.8rem;font-weight:700;color:${rc};border:1px solid ${rc};width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${skill.rank || '?'}</span>
-                            <div style="flex:1;text-align:left">
-                                <div style="font-size:.8rem;color:#d0e6f0;font-weight:600">${UIRenderer.esc(skill.name)}</div>
-                                <div style="font-size:.68rem;color:#8aa8c0">${UIRenderer.esc(skill.desc || 'ไม่มีคำอธิบาย')}</div>
-                            </div>
-                        </div>`;
-                    }
-                }
+                    treeTokens.forEach((sk, i) => {
+                        const isLearned = learnedSkills.some(ls => ls.name.toLowerCase() === sk.name.toLowerCase());
+                        const isUnlockable = !isLearned && (val >= sk.req);
+                        const isLocked = !isLearned && (val < sk.req);
+                        
+                        const rc = RANK_COLORS[sk.rank?.toUpperCase()] || '#8aa8c0';
+                        const bgCol = isLearned ? 'rgba(51,204,255,.05)' : (isLocked ? 'rgba(0,0,0,0.4)' : '#0d2238');
+                        const borderCol = isLearned ? `${rc}55` : (isLocked ? '#111' : '#33ccff');
+                        const opacity = isLocked ? '0.5' : '1';
+                        const btnState = isUnlockable ? `class="ac-tree-unlock-btn" data-idx="${i}" style="cursor:pointer;"` : `style="pointer-events:none;"`;
 
-                html += `</div>`;
-                callGenericPopup(html, POPUP_TYPE.TEXT);
+                        html += `<button ${btnState} style="text-align:left; background:${bgCol}; border:1px solid ${borderCol}; padding:0.8rem; border-radius:4px; transition:all 0.2s; opacity:${opacity}; position:relative; overflow:hidden;">
+                            ${isLearned ? `<div style="position:absolute; top:0; right:0; background:rgba(51,204,255,0.2); color:#33ccff; font-size:0.6rem; padding:0.1rem 0.4rem; border-bottom-left-radius:4px;">LEARNED</div>` : ''}
+                            ${isLocked ? `<div style="position:absolute; top:0; right:0; background:rgba(255,50,50,0.2); color:#ff5555; font-size:0.6rem; padding:0.1rem 0.4rem; border-bottom-left-radius:4px;">REQ: ${stat} ${sk.req}</div>` : ''}
+                            ${isUnlockable ? `<div style="position:absolute; top:0; right:0; background:rgba(50,255,100,0.2); color:#55ff66; font-size:0.6rem; padding:0.1rem 0.4rem; border-bottom-left-radius:4px; font-weight:bold;">CLICK TO UNLOCK</div>` : ''}
+                            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
+                                <span style="font-family:'Cinzel',serif; color:#ffd740; font-size:1rem; min-width:25px;">${sk.rank}</span>
+                                <span style="font-family:'Cinzel',serif; color:#d0e6f0; font-size:0.9rem;">${sk.name}</span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#8aa8c0; line-height:1.4;">${sk.desc}</div>
+                        </button>`;
+                    });
+                }
+                
+                html += `</div></div>`;
+
+                let selectedIdx = -1;
+                setTimeout(() => {
+                    const btns = document.querySelectorAll('.ac-tree-unlock-btn');
+                    btns.forEach(b => b.addEventListener('click', () => {
+                        // @ts-ignore
+                        btns.forEach(x => { x.style.borderColor = '#33ccff'; });
+                        // @ts-ignore
+                        b.style.borderColor = '#55ff66';
+                        selectedIdx = parseInt(b.getAttribute('data-idx'));
+                    }));
+                }, 100);
+
+                const ok = await callGenericPopup(html, POPUP_TYPE.CONFIRM);
+                if (ok && selectedIdx !== -1) {
+                    const chosen = treeTokens[selectedIdx];
+                    this.data.addSkill(chosen.name, chosen.rank, chosen.desc, stat);
+                    
+                    if (this.data._backup?.player?.skills) {
+                        this.data._backup.player.skills.push({ name: chosen.name, rank: chosen.rank, desc: chosen.desc, stat: stat });
+                    }
+                    this.saveAndRender();
+                    notify('success', `เรียนรู้สกิลสาย ${stat} สำเร็จ: ${chosen.name}`, '⚡ Skill Unlocked');
+                }
             },
             onSkillInfo: (name) => {
                 const skill = this.data.player.skills.find(s => s.name === name);
@@ -742,12 +932,243 @@ class AzureCodexController {
                     notify('info', `ลบสกิล "${name}" แล้ว`, '🗑 Skill Removed');
                 }
             },
-            onRequestSkill: () => {
-                const ta = /** @type {HTMLTextAreaElement} */ (document.getElementById('send_textarea'));
-                if (ta) {
-                    ta.value = `*เปิดเมนูสกิล ตรวจสอบสกิลใหม่ที่สามารถเรียนรู้ได้ตาม stat และระดับปัจจุบัน*`;
-                    ta.dispatchEvent(new Event('input', { bubbles: true }));
-                    document.getElementById('send_but')?.click();
+            onSyncUniverse: async () => {
+                // Guard: must have an active chat
+                const ctx = getContext();
+                if (!ctx.chat || !ctx.characterId) {
+                    notify('warning', 'กรุณาเปิดแชทก่อนใช้ Sync Universe', '⚠ No Active Chat');
+                    return;
+                }
+
+                const btn = document.querySelector('.sao-sync-universe-btn');
+                const oldText = btn ? btn.innerHTML : '';
+                if (btn) {
+                    btn.innerHTML = '⏳ Syncing...';
+                    // @ts-ignore
+                    btn.style.pointerEvents = 'none';
+                    // @ts-ignore
+                    btn.style.opacity = '0.5';
+                }
+
+                notify('info', 'กำลังสำรวจโครงสร้างและประวัติของจักรวาลตัวละคร... (AI Generating)', '⚡ Universe Sync Loading...', { timeOut: 12000 });
+
+                try {
+                    const pUser = /** @type {any} */ (window).power_user;
+                    const personaStr = pUser?.persona_description || String(ctx.chatMetadata?.user_persona || /** @type {any} */ (ctx).user_persona || '');
+                    const charName = ctx.name2 || ctx.characterId || 'NPC';
+
+                    const prompt = `[System note: Evaluate the active Bot/Character "${charName}" and the User's Persona: "${personaStr}".
+Task: Determine the anime/franchise/universe this character belongs to (e.g. Naruto, Toaru Majutsu no Index, Attack on Titan, Demon Slayer, standard RPG, etc).
+Design a strict 6-stat RPG system that perfectly fits this universe's power scaling terminology.
+Output MUST be exactly valid JSON, no markdown formatting, no conversational text.
+
+Format exactly like this example for a standard RPG:
+{"levelName":"Level","levelDisplay":"1","expName":"EXP","statNames":["STR","AGI","VIT","INT","DEX","LUK"]}
+
+Example for Naruto:
+{"levelName":"Ninja Rank","levelDisplay":"Genin","expName":"Missions","statNames":["NIN","TAI","GEN","BUI","STR","SPD"]}
+
+You must provide EXACTLY 6 short stat names in "statNames" (max 4 letters each). 
+Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothing else!]`;
+
+                    const reply = await generateQuietPrompt({ quietPrompt: prompt });
+                    
+                    try {
+                        // Robust JSON extraction: find the first {...} block that contains "statNames"
+                        let uni = null;
+                        const jsonBlocks = reply.match(/\{[^{}]*"statNames"\s*:\s*\[[^\]]*\][^{}]*\}/g);
+                        if (jsonBlocks) {
+                            for (const block of jsonBlocks) {
+                                try {
+                                    const parsed = JSON.parse(block);
+                                    if (parsed && parsed.statNames && parsed.statNames.length === 6) {
+                                        uni = parsed;
+                                        break;
+                                    }
+                                } catch { /* try next block */ }
+                            }
+                        }
+                        // Fallback: try cleaning and parsing the whole reply
+                        if (!uni) {
+                            let cleanJson = reply.replace(/[\x60]{1,3}(json)?[\x60]*/gi, '').trim();
+                            // Try to extract JSON between first { and last }
+                            const firstBrace = cleanJson.indexOf('{');
+                            const lastBrace = cleanJson.lastIndexOf('}');
+                            if (firstBrace !== -1 && lastBrace > firstBrace) {
+                                cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+                            }
+                            try {
+                                const parsed = JSON.parse(cleanJson);
+                                if (parsed && parsed.statNames && parsed.statNames.length === 6) {
+                                    uni = parsed;
+                                }
+                            } catch { /* fallthrough */ }
+                        }
+                        
+                        if (uni && uni.levelName && uni.statNames && uni.statNames.length === 6) {
+                            const oldLevelNum = this.data.player.level || 1;
+                            
+                            this.data.player.universe = {
+                                levelName: uni.levelName,
+                                levelDisplay: String(uni.levelDisplay || oldLevelNum),
+                                expName: uni.expName || 'EXP',
+                                statNames: uni.statNames.map((/** @type {string} */ s) => s.toUpperCase().substring(0,4))
+                            };
+                            
+                            this.data.player.stats = {};
+                            for (const s of this.data.player.universe.statNames) {
+                                this.data.player.stats[s] = 5;
+                            }
+                            this.data.player.statPoints = 0;
+                            this.data.player.skillTrees = {};
+                            this.data.player.skills = [];
+                            
+                            this.saveAndRender();
+                            notify('success', `จูนจักรวาลสำเร็จ! ระบบพลังตอนนี้คือ: ${uni.levelName}`, '⚡ Universe Synced', { timeOut: 8000 });
+                        } else {
+                            throw new Error("Invalid output layout");
+                        }
+                    } catch (e) {
+                         console.error("Universe Sync JSON Parse Error:", e, reply);
+                         notify('error', 'ระบบล้มเหลวในการอ่านโครงสร้างสเตตัส ลองกดอีกครั้ง!', 'Parse Error');
+                    }
+
+                } catch (err) {
+                    console.error('Universe Sync error:', err);
+                    notify('error', 'การเชื่อมต่อกับ AI ล้มเหลว', 'Failed');
+                } finally {
+                    if (btn) {
+                        btn.innerHTML = oldText;
+                        // @ts-ignore
+                        btn.style.pointerEvents = 'auto';
+                        // @ts-ignore
+                        btn.style.opacity = '1';
+                    }
+                }
+            },
+            onRequestSkill: async () => {
+                // Guard: must have an active chat
+                if (!getContext().chat || !getContext().characterId) {
+                    notify('warning', 'กรุณาเปิดแชทก่อนใช้ขอผังทักษะ', '⚠ No Active Chat');
+                    return;
+                }
+
+                const btn = document.querySelector('.sao-skill-request-btn');
+                const oldText = btn ? btn.innerHTML : '';
+                if (btn) {
+                    btn.innerHTML = '⏳ Generating Class Tree...';
+                    // @ts-ignore
+                    btn.style.pointerEvents = 'none';
+                    // @ts-ignore
+                    btn.style.opacity = '0.5';
+                }
+
+                notify('info', 'กำลังวาดผังทักษะสำหรับทุกสเตตัส (AI Generating)...', '⚡ Universal Tree Loading...', { timeOut: 12000 });
+
+                try {
+                    const pUser = /** @type {any} */ (window).power_user;
+                    const personaStr = pUser?.persona_description || String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
+                    const statArray = this.data.player.universe?.statNames || ['STR','AGI','VIT','INT','DEX','LUK'];
+
+                    const prompt = `[System note: Evaluate the User's Persona.
+Persona: ${personaStr}
+Task: Invent an entire RPG Class Skill Tree tailored to this persona. 
+Generate exactly 3 unlockable skills for EACH of the 6 core stats (${statArray.join(', ')}).
+For each skill, specify a Rank (F to S) and a stat requirement threshold (10, 30, or 50).
+Use exactly this format per skill (start each with "Skill:"):
+Skill: [Skill Name] (Rank [F to S]) [Req: XX [STAT TAG]] - [Thai Description]
+
+Example:
+Skill: Power Slash (Rank F) [Req: 10 ${statArray[0]}] - ฟาดคลื่นดาบโจมตีศัตรู
+Skill: Swift Step (Rank C) [Req: 30 ${statArray[1]}] - แดชหลบการโจมตีอย่างรวดเร็ว
+Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
+
+                    const reply = await generateQuietPrompt({ quietPrompt: prompt });
+                    
+                    const singleGainRx = /(?:Skill|สกิล|ทักษะ)[\s:：!\-]*\**([^\n*\[\](]+?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
+                    const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
+                    // Updated Req Rx to match the first 3-4 chars of stat nicely
+                    const reqRx = /(?:Req(?:uires?|uirement)?|ต้องการ|Require)[^\d]*(\d+)\s*([A-Za-z]{3,4})/i;
+
+                    if (!this.data.player.skillTrees) this.data.player.skillTrees = {};
+
+                    let m;
+                    let parsedCount = 0;
+                    
+                    for (const s of statArray) {
+                        this.data.player.skillTrees[s] = [];
+                    }
+
+                    while ((m = singleGainRx.exec(reply)) !== null) {
+                        let rawName = m[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
+                        let desc = (m[2] || '').trim();
+                        
+                        let reqVal = 10;
+                        let targetStat = statArray[0];
+                        
+                        const reqMatch = desc.match(reqRx) || rawName.match(reqRx);
+                        if (reqMatch) {
+                            reqVal = parseInt(reqMatch[1]);
+                            targetStat = reqMatch[2].toUpperCase().substring(0,4);
+                            desc = desc.replace(reqMatch[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+                            rawName = rawName.replace(reqMatch[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+                        } else {
+                            const altStatRx = new RegExp(`(${statArray.join('|')})`, 'i');
+                            const altMatch = desc.match(altStatRx) || rawName.match(altStatRx);
+                            if (altMatch) {
+                                targetStat = altMatch[1].toUpperCase();
+                            } else {
+                                continue; 
+                            }
+                            
+                            const justReqRx = /(?:Req(?:uires?|uirement)?|ต้องการ|Require)[^\d]*(\d+)/i;
+                            const jr = desc.match(justReqRx) || rawName.match(justReqRx);
+                            if (jr) {
+                                reqVal = parseInt(jr[1]);
+                                desc = desc.replace(jr[0], '');
+                                rawName = rawName.replace(jr[0], '');
+                            }
+                        }
+
+                        if (!statArray.includes(targetStat)) continue;
+
+                        let finalRank = '?';
+                        const innerRm = desc.match(rankRx) || rawName.match(rankRx);
+                        if (innerRm) {
+                            finalRank = innerRm[1].toUpperCase();
+                            desc = desc.replace(innerRm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+                            rawName = rawName.replace(innerRm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
+                        }
+
+                        if (rawName.length > 2 && !/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(rawName)) {
+                            this.data.player.skillTrees[targetStat].push({ name: rawName, rank: finalRank, req: reqVal, desc });
+                            parsedCount++;
+                        }
+                    }
+
+                    if (parsedCount > 0) {
+                        for (const s of statArray) {
+                            if (this.data.player.skillTrees[s]) {
+                                this.data.player.skillTrees[s].sort((a,b) => a.req - b.req);
+                            }
+                        }
+                        this.saveAndRender();
+                        notify('success', `สร้างผังทักษะคลาสสำเร็จ! (${parsedCount} สกิล) กดที่ชื่อสเตตัสใน Tracker ดูได้เลยครับ`, '⚡ Class Tree Generated');
+                    } else {
+                        notify('error', 'AI ส่งข้อมูลรูปแบบผิด (ทักษะตกหล่น) ลองกดปุ่มขอสกิลใหม่อีกครั้ง!', 'Error', { timeOut: 5000 });
+                        console.log('Class tree parsing failed. Reply was: ', reply);
+                    }
+                } catch (err) {
+                    console.error('Skill tree generation error:', err);
+                    notify('error', 'การเชื่อมต่อกับ AI ล้มเหลว', 'Failed');
+                } finally {
+                    if (btn) {
+                        btn.innerHTML = oldText;
+                        // @ts-ignore
+                        btn.style.pointerEvents = 'auto';
+                        // @ts-ignore
+                        btn.style.opacity = '1';
+                    }
                 }
             },
         });
@@ -765,7 +1186,11 @@ class AzureCodexController {
         let m;
         
         let playerName = '';
-        try { playerName = (getContext().name1 || '').trim().toLowerCase(); } catch(e){}
+        let botCharName = '';
+        try { 
+            playerName = (getContext().name1 || '').trim().toLowerCase();
+            botCharName = (getContext().name2 || '').trim().toLowerCase();
+        } catch(e){}
 
         while ((m = boldRx.exec(text)) !== null) {
             const name = m[1].trim();
@@ -773,6 +1198,9 @@ class AzureCodexController {
             
             if (lower === playerName) continue;
             if (COMMON_WORDS.has(lower) || KNOWN_STATS.has(lower) || STAT_IGNORE_WORDS.has(lower) || NOT_ITEMS.has(lower)) continue;
+            
+            // If this name matches the main bot character, skip — the bot itself is not an "NPC"
+            if (botCharName && (lower === botCharName || botCharName.includes(lower) || lower.includes(botCharName))) continue;
             
             if (name.length >= 2) {
                 allNames.push(name);
@@ -861,21 +1289,26 @@ class AzureCodexController {
             } else if (['GOLD','MONEY','COIN','COINS','ทอง','เงิน'].includes(upper)) {
                 const v = applyVal(p.gold, value, null);
                 if (p.gold !== v) { p.gold = v; changed = true; updates.push(`Gold: ${v}`); }
-            } else if (SAO_STATS.includes(upper)) {
+            } else if ((this.data.player.universe?.statNames || SAO_STATS).includes(upper)) {
                 const v = applyVal(p.stats[upper] || 0, value, null);
                 if (p.stats[upper] !== v) { p.stats[upper] = v; changed = true; updates.push(`${upper}: ${v}`); }
             } else if (['ATK','ATTACK','พลังโจมตี','ค่าโจมตี'].includes(upper)) {
-                const v = applyVal(p.stats.STR, value, null);
-                if (p.stats.STR !== v) { p.stats.STR = v; changed = true; updates.push(`STR: ${v}`); }
+                // Map ATK aliases to the first stat in the universe
+                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[0];
+                const v = applyVal(p.stats[targetStat] || 0, value, null);
+                if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             } else if (['DEF','DEFENSE','พลังป้องกัน','ค่าป้องกัน','ARMOR'].includes(upper)) {
-                const v = applyVal(p.stats.VIT, value, null);
-                if (p.stats.VIT !== v) { p.stats.VIT = v; changed = true; updates.push(`VIT: ${v}`); }
+                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[2];
+                const v = applyVal(p.stats[targetStat] || 0, value, null);
+                if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             } else if (['SPD','SPEED','ความเร็ว'].includes(upper)) {
-                const v = applyVal(p.stats.AGI, value, null);
-                if (p.stats.AGI !== v) { p.stats.AGI = v; changed = true; updates.push(`AGI: ${v}`); }
+                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[1];
+                const v = applyVal(p.stats[targetStat] || 0, value, null);
+                if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             } else if (['MAGIC','MATK','สติปัญญา'].includes(upper)) {
-                const v = applyVal(p.stats.INT, value, null);
-                if (p.stats.INT !== v) { p.stats.INT = v; changed = true; updates.push(`INT: ${v}`); }
+                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[3];
+                const v = applyVal(p.stats[targetStat] || 0, value, null);
+                if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             }
         }
 
@@ -974,8 +1407,37 @@ class AzureCodexController {
     // ── Inventory Detection (tighter patterns, dedup) ──
     detectInventoryFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
-
+        
         let changed = false;
+
+        // 1. Auto-detect item usage/consumption based on existing inventory items using heuristic NLP verbs
+        if (!isBulk) {
+            const lowerText = text.toLowerCase();
+            for (const item of [...this.data.inventory]) {
+                if (item.name.length <= 2) continue; // too short, skip heuristic
+                
+                // Escape item name for regex safety
+                const safeName = item.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').toLowerCase();
+                
+                // Match "eats the Apple", "used Potion", "ดื่ม ยา", "ใช้ ดาบ"
+                const rx = new RegExp(`(?:\\b(?:use|uses|using|eat|eats|eating|drink|drinks|drinking|consume|consumes|drop|drops|throw|throws)\\b|(?:ใช้|กิน|ยัด|เท|หัก|ปา|ทิ้ง|หยิบ|ขว้าง|สวมใส่))\\s*(?:the\\s+|a\\s+|an\\s+)?(?:[a-zก-๙]+\\s+){0,2}${safeName}(?!\\w)`, 'i');
+                
+                if (rx.test(lowerText)) {
+                    // Prevent dropping equipment/weaponry heavily if they just "use" it (unless explicitly dropped)
+                    if (/(?:sword|blade|shield|armor|gun|bow|ring|necklace|ดาบ|โล่|เกราะ|อาวุธ|ปืน|ธนู|แหวน|สร้อย)/i.test(item.name)) {
+                        if (!/(?:drop|drops|throw|throws|ทิ้ง|ถอด)/i.test(lowerText)) continue;
+                    }
+
+                    // Auto decrement
+                    const ok = this.data.removeItem(item.name, 1);
+                    if (ok) {
+                        changed = true;
+                        notify('info', `[ฉากบรรยาย]: ${item.name}`, '✨ Auto Item Used', { timeOut: 4500 });
+                    }
+                }
+            }
+        }
+
         const gains = [];
         const losses = [];
         const seen = new Set(); // FIX: dedup within one message
@@ -999,8 +1461,16 @@ class AzureCodexController {
             // FIX: Filters for currency strings pretending to be items, e.g. "50 gold", "ทอง 100 เหรียญ"
             if (/^(?:ทอง|เงิน|เหรียญ|gold|money|coins?|exp|xp|hp|mp|sp|lv|level|เลเวล|พลังชีวิต|พลังเวทย์)$/i.test(lower)) return;
             if (/^[\d\s,.]*(?:ทอง|เงิน|เหรียญ|gold|money|coins?|exp|xp)[\d\s,.]*$/i.test(lower)) return;
+            if (/(?:gold|coins?|ทอง|เงิน|เหรียญ)/i.test(lower) && /\d/.test(lower)) return;
+            if (/^(?:ทอง|เงิน|เหรียญ|gold|coins?|\s)+$/i.test(lower)) return;
+            if (/(?:skill|สกิล|status|สเตตัส|stat|exp|xp|^level\b|\blv\b)/i.test(lower) && !/book|ตำรา|หนังสือ/i.test(lower)) return;
+
             // FIX: Skip common verbs/phrases that aren't items
-            if (/^(a |the |an |some |any |to |is |it |that |this )/i.test(clean)) return;
+            if (/^(a |the |an |some |any |to |is |it |that |this |was |were |been |has |have |had )/i.test(clean)) return;
+            // FIX: Reject all-punctuation or all-symbol strings that survived cleanup
+            if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(clean)) return;
+            // FIX: Reject strings that are common RPG verbs captured by accident
+            if (/^(ได้รับ|เก็บได้|พบ|หยิบ|ซื้อ|คว้ามา|รับ|obtained?|receive[ds]?|got|found|reward|loot|earn|buy|bought|pick|acquire[ds]?)$/i.test(clean)) return;
             const dedupKey = `${isLoss ? 'L' : 'G'}:${lower}`;
             if (seen.has(dedupKey)) return;
             seen.add(dedupKey);
@@ -1045,6 +1515,118 @@ class AzureCodexController {
         }
     }
 
+    // ── Status Effect / Condition Detection ──
+    detectConditionsFromMessage(text, isBulk = false) {
+        if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading || isBulk) return;
+        
+        const conditionPatterns = [
+            // [regex, condition name, effect description]
+            [/(?:poisoned|ถูกพิษ|ได้รับพิษ|วางยาพิษ|poison(?:ed)?)/i, 'Poisoned', 'ลด HP ทุกเทิร์น (-5% HP)'],
+            [/(?:stunned|สตัน|มึนงง|ช็อก|stun(?:ned)?)/i, 'Stunned', 'ไม่สามารถขยับได้ 1 เทิร์น'],
+            [/(?:burn(?:ing|ed|t)?|ถูกไฟเผา|ลุกเป็นไฟ|ไหม้|เพลิง)/i, 'Burning', 'ได้รับความเสียหายจากไฟ'],
+            [/(?:frozen|แช่แข็ง|ถูกน้ำแข็ง|ถูกแช่แข็ง|freeze|froze)/i, 'Frozen', 'ไม่สามารถเคลื่อนไหวได้'],
+            [/(?:paralyz(?:ed|e)|เป็นอัมพาต|อัมพฤกษ์|ชา)/i, 'Paralyzed', 'ความเร็วลดลง 50%'],
+            [/(?:bless(?:ed|ing)?|ได้รับพร|อวยพร|บัฟ|buff(?:ed)?)/i, 'Blessed', 'พลังโจมตีเพิ่ม 20%'],
+            [/(?:weaken(?:ed)?|อ่อนแอ|ถูกทำให้อ่อนแอ|debuff(?:ed)?)/i, 'Weakened', 'สเตตัสทั้งหมดลด 20%'],
+            [/(?:blind(?:ed)?|ตาบอด|มองไม่เห็น)/i, 'Blinded', 'ความแม่นยำลดลงอย่างมาก'],
+            [/(?:heal(?:ed)?|รักษา|ฟื้นฟู|หายดี|cure[ds]?|recovered)/i, '_RECOVERY_', ''],
+        ];
+        
+        let changed = false;
+        const p = this.data.player;
+        if (!p.conditions) p.conditions = [];
+
+        for (const [rx, name, effect] of conditionPatterns) {
+            if (rx.test(text)) {
+                if (name === '_RECOVERY_') {
+                    // Recovery removes negative conditions
+                    const negatives = ['Poisoned', 'Stunned', 'Burning', 'Frozen', 'Paralyzed', 'Weakened', 'Blinded'];
+                    const before = p.conditions.length;
+                    p.conditions = p.conditions.filter(c => !negatives.includes(c.name));
+                    if (p.conditions.length < before) {
+                        changed = true;
+                        notify('success', 'สถานะผิดปกติถูกรักษาหายแล้ว!', '💚 Conditions Cleared', { timeOut: 3000 });
+                    }
+                } else {
+                    // Don't add duplicates
+                    if (!p.conditions.find(c => c.name === name)) {
+                        p.conditions.push({ name, turnsLeft: 3, effect });
+                        changed = true;
+                        const isDebuff = ['Poisoned', 'Stunned', 'Burning', 'Frozen', 'Paralyzed', 'Weakened', 'Blinded'].includes(name);
+                        notify(isDebuff ? 'warning' : 'info', `${name}: ${effect}`, isDebuff ? '💀 Debuff!' : '✨ Buff!', { timeOut: 4000 });
+                    }
+                }
+            }
+        }
+        
+        // Auto-expire conditions each message
+        if (p.conditions.length > 0) {
+            p.conditions = p.conditions.filter(c => {
+                if (c.turnsLeft <= 0) return false;
+                c.turnsLeft--;
+                if (c.turnsLeft <= 0) {
+                    changed = true;
+                    notify('info', `${c.name} หมดอายุแล้ว`, '⏳ Condition Expired', { timeOut: 2500 });
+                    return false;
+                }
+                return true;
+            });
+        }
+        
+        if (changed) this.saveAndRender();
+    }
+
+    // ── NPC Mood Detection (Sentiment Analysis) ──
+    detectNPCMoodFromMessage(text, isBulk = false) {
+        if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading || isBulk) return;
+        if (Object.keys(this.data.bots).length === 0) return;
+        
+        const angryWords = /(?:โกรธ|เกลียด|รำคาญ|หงุดหงิด|ขู่|ตะคอก|กรีดร้อง|ฆ่า|ทำลาย|angry|furious|hate|annoyed|yell|scream|glare|disgusted|irritated|hostile|enraged|threaten|snarl)/gi;
+        const happyWords = /(?:ยิ้ม|หัวเราะ|รัก|ชอบ|ดีใจ|ขอบคุณ|สนิท|กอด|จูบ|smile|laugh|love|like|happy|thank|hug|kiss|blush|giggle|gentle|kind|trust|warm|fondly|affection)/gi;
+        
+        const angryCount = (text.match(angryWords) || []).length;
+        const happyCount = (text.match(happyWords) || []).length;
+        
+        if (angryCount === 0 && happyCount === 0) return;
+        
+        // Find which NPC is mentioned in this message
+        const boldRx = new RegExp(BOLD_RX_SRC, 'g');
+        let bm;
+        const mentionedNpcs = new Set();
+        while ((bm = boldRx.exec(text)) !== null) {
+            const key = this.data.getBotKey(bm[1].trim());
+            if (this.data.bots[key]) mentionedNpcs.add(key);
+        }
+        
+        if (mentionedNpcs.size === 0) return;
+        
+        let changed = false;
+        const delta = 2; // Subtle nudge per message
+        
+        for (const npcKey of mentionedNpcs) {
+            const bot = this.data.bots[npcKey];
+            if (!bot) continue;
+            
+            if (angryCount > happyCount) {
+                const newAnn = Math.min(100, bot.annoyance + delta);
+                if (newAnn !== bot.annoyance) {
+                    bot.annoyance = newAnn;
+                    bot.stage = DataEngine.calcStage(bot.affection, bot.annoyance);
+                    changed = true;
+                }
+            } else if (happyCount > angryCount) {
+                const newAff = Math.min(100, bot.affection + delta);
+                if (newAff !== bot.affection) {
+                    bot.affection = newAff;
+                    bot.stage = DataEngine.calcStage(bot.affection, bot.annoyance);
+                    changed = true;
+                }
+            }
+        }
+        
+        if (changed) this.saveAndRender();
+    }
+
     // FIX: Split live vs bulk processing to prevent accumulation bugs
     processMessageLive(text) {
         this.detectNPCsFromMessage(text);
@@ -1052,6 +1634,8 @@ class AzureCodexController {
         this.detectRelationshipFromMessage(text);
         this.detectInventoryFromMessage(text);
         this.detectSkillsFromMessage(text);
+        this.detectConditionsFromMessage(text);
+        this.detectNPCMoodFromMessage(text);
     }
 
     processMessageBulk(text) {
@@ -1060,29 +1644,41 @@ class AzureCodexController {
         this.detectSkillsFromMessage(text, true);
     }
 
-    // ── Skill Detection ──
     detectSkillsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
         let changed = false;
-
-        // 1. Single-line formats: "Skill Learned: Fireball - Desc"
-        const singleLineRx = /(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained|Gain)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่|ความสามารถใหม่)\s*[:：!\-]+\s*\**([^\n*:(]{2,50}?)\**\s*(?:[-:：(]\s*([^\n]{5,150}))?(?:$|\n|\r|\])/gi;
+        
         const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ|Lv|Level)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
 
+        // 1. Core Action: "Skill Learned: Fireball - Description"
+        const singleGainRx = /(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained|Gain)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่|ความสามารถใหม่)[\s:：!\-]*\**([^\n*\[\](]{2,50}?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
+        
         let m;
-        while ((m = singleLineRx.exec(text)) !== null) {
-            let rawName = m[1].trim().replace(/\*+/g, '');
-            rawName = rawName.replace(/[)\]]+$/, '').trim();
+        while ((m = singleGainRx.exec(text)) !== null) {
+            let rawName = m[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
             if (rawName.length < 2 || rawName.length > 50) continue;
+            // Reject junk: all-punctuation, digits, or matching the keyword itself
+            if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(rawName)) continue;
+            if (/^(skill|สกิล|ทักษะ|new|learned|unlocked|acquired|obtained|gain|rank|desc|none|null)$/i.test(rawName)) continue;
 
             let desc = (m[2] || '').trim();
-            desc = desc.replace(/^[)\]]+/, '').trim(); // clean leftover bracket
             
-            const nearby = text.substring(Math.max(0, m.index - 30), Math.min(text.length, m.index + 100));
+            // If desc is empty, look at the next line immediately following
+            if (!desc) {
+                const nextLines = text.substring(m.index + m[0].length).trimStart().split('\n');
+                if (nextLines.length > 0 && nextLines[0].length > 5 && nextLines[0].length < 150) {
+                    if (!/^\**\s*(?:Skill|ได้รับ|ได้สกิล|New|\[)/i.test(nextLines[0])) {
+                        desc = nextLines[0].replace(/^(?:Desc|Description|รายละเอียด|คำอธิบาย)?[\s:：\-*]+/, '').trim();
+                    }
+                }
+            }
+
+            desc = desc.replace(/^[)\]]+/, '').trim();
+            
+            const nearby = text.substring(Math.max(0, m.index - 30), Math.min(text.length, m.index + 150));
             const rm = nearby.match(rankRx);
             const rank = rm ? rm[1].toUpperCase() : '?';
 
-            // Extract rank from desc if present
             const innerRm = desc.match(rankRx);
             let finalRank = rank;
             if (innerRm) {
@@ -1103,18 +1699,16 @@ class AzureCodexController {
             }
         }
 
-        // 2. Bullet list format: Match a header like "Skills:" then lines starting with "-"
-        const listHeaderRx = /(?:Skills?|Active Skills|Passive Skills|ความสามารถ|สกิล|ทักษะ)\s*[:：]\s*\n((?:[\s*]*[-•*]\s*[^\n]+\n?)+)/gi;
+        // 2. Persona Block list: "Skills:\n- Fireball: Shoots fire"
+        const listHeaderRx = /(?:\[?Skills?\]?|Active Skills|Passive Skills|ความสามารถ|สกิล|ทักษะ)[\]\s]*[:：]?\s*\n((?:[\s*]*[-•*]\s*[^\n]+\n?)+)/gi;
         let mList;
         while ((mList = listHeaderRx.exec(text)) !== null) {
             const listBlock = mList[1];
             const itemRx = /[-•*]\s*\**([^\n*:(]{2,50}?)\**\s*(?:[-:：(]\s*([^\n]{5,150}))?/gi;
             let mItem;
             while ((mItem = itemRx.exec(listBlock)) !== null) {
-                let sName = mItem[1].trim().replace(/\*+/g, '');
-                let sDesc = (mItem[2] || '').trim();
-                sName = sName.replace(/[)\]]+$/, '').trim();
-                sDesc = sDesc.replace(/^[)\]]+/, '').trim();
+                let sName = mItem[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
+                let sDesc = (mItem[2] || '').trim().replace(/^[)\]]+/, '').trim();
                 if (sName.length < 2 || sName.length > 50) continue;
                 
                 const rm = sDesc.match(rankRx) || sName.match(rankRx);
@@ -1133,6 +1727,21 @@ class AzureCodexController {
                     if (existing && (!existing.desc || existing.desc.length < sDesc.length)) {
                         existing.desc = sDesc;
                         changed = true;
+                    }
+                }
+            }
+        }
+        
+        // 3. Flat comma list fallback for Persona: "Skills: Fireball, Heal, Slash"
+        const commaListRx = /(?:\[?Skills?\]?|ความสามารถ|สกิล|ทักษะ)[\]\s]*[:：]\s*([a-zA-Zก-๙\s,]+)(?:\n|$)/gi;
+        let mComma;
+        while ((mComma = commaListRx.exec(text)) !== null) {
+            const skillsStr = mComma[1];
+            if (skillsStr.includes(',')) {
+                for (const s of skillsStr.split(',')) {
+                    const sName = s.trim();
+                    if (sName.length >= 2 && sName.length <= 50) {
+                        if (this.data.addSkill(sName, '?', '', '')) changed = true;
                     }
                 }
             }
@@ -1254,8 +1863,8 @@ class AzureCodexController {
         </div>`;
         document.body.appendChild(root);
         btn.addEventListener('click', () => root.classList.toggle('show-overlay'));
-        document.getElementById('ac-close-btn').addEventListener('click', () => root.classList.remove('show-overlay'));
-        document.getElementById('ac-reset-btn').addEventListener('click', () => this.confirmReset());
+        document.getElementById('ac-close-btn')?.addEventListener('click', () => root.classList.remove('show-overlay'));
+        document.getElementById('ac-reset-btn')?.addEventListener('click', () => this.confirmReset());
         this.updateFloatBtn();
         this.ui.render();
     }
@@ -1332,10 +1941,11 @@ class AzureCodexController {
             const name = parts[0];
             const rank = parts[1] || '?';
             const desc = parts.slice(2).join(' ');
-            // Check if last word of desc matches a stat name
+            // Check if last word of desc matches a dynamic stat name
             let stat = '';
             const lastWord = desc.split(/\s+/).pop()?.toUpperCase();
-            if (lastWord && SAO_STATS.includes(lastWord)) {
+            const validStats = this.data.player.universe?.statNames || ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'];
+            if (lastWord && validStats.includes(lastWord)) {
                 stat = lastWord;
             }
             const isNew = this.data.addSkill(name, rank, desc, stat);
@@ -1353,9 +1963,10 @@ class AzureCodexController {
 
 
         cmd('stat-alloc', async (_, v) => {
-            const p = v?.trim().split(/\s+/); if (!p || p.length < 1) return `Usage: /stat-alloc [${SAO_STATS.join('|')}] [amount?]`;
+            const validStats = this.data.player.universe?.statNames || ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'];
+            const p = v?.trim().split(/\s+/); if (!p || p.length < 1) return `Usage: /stat-alloc [${validStats.join('|')}] [amount?]`;
             const stat = p[0].toUpperCase(), amt = parseInt(p[1])||1;
-            if (!SAO_STATS.includes(stat)) return `Invalid stat. Use: ${SAO_STATS.join(', ')}`;
+            if (!validStats.includes(stat)) return `Invalid stat. Use: ${validStats.join(', ')}`;
             const ok = this.data.allocateStat(stat, amt); this.saveAndRender();
             return ok ? `Allocated ${amt} pt(s) to ${stat}.` : 'Not enough stat points!';
         }, 'stat [amount]', 'Allocate stat points.');
@@ -1386,9 +1997,15 @@ class AzureCodexController {
                     
                     this.lastProcessedIdx = chat.length - 1;
 
-                    // Automatically sync skills from the player's Persona
+                    // Automatically sync skills from the player's Persona globally
                     try {
-                        const personaStr = String(getContext().chatMetadata?.user_persona || getContext().user_persona || '');
+                        let personaStr = '';
+                        const pUser = /** @type {any} */ (window).power_user;
+                        if (pUser && pUser.persona_description) {
+                            personaStr = pUser.persona_description;
+                        } else {
+                            personaStr = String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
+                        }
                         if (personaStr) this.detectSkillsFromMessage(personaStr, true);
                     } catch(e) {}
 
@@ -1403,6 +2020,22 @@ class AzureCodexController {
                     }
                     this.cleanupMinorNPCs();
                     this.saveAndRender();
+
+                    // Auto Sync Universe: if universe is still default SAO, trigger background sync
+                    try {
+                        const currentStatNames = this.data.player.universe?.statNames;
+                        const isDefault = !currentStatNames || JSON.stringify(currentStatNames) === JSON.stringify(['STR','AGI','VIT','INT','DEX','LUK']);
+                        if (isDefault && getContext().characterId) {
+                            console.debug(LOG_PREFIX, 'Auto-syncing universe for new character...');
+                            // Small delay to avoid race conditions with chat loading
+                            setTimeout(() => {
+                                try {
+                                    const syncBtn = document.querySelector('.sao-sync-universe-btn');
+                                    if (syncBtn) syncBtn.click();
+                                } catch(e) { console.debug(LOG_PREFIX, 'Auto-sync skipped:', e); }
+                            }, 2000);
+                        }
+                    } catch(e) {}
                 } catch (err) { console.warn(LOG_PREFIX, 'Scan error:', err); }
             }, 500);
         });

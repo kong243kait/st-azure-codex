@@ -622,6 +622,32 @@
   50% { border-color: rgba(255,215,0,.5); box-shadow: 0 0 12px rgba(255,215,0,.15); }
 }
 
+/* ── Conditions Row ── */
+#azure-codex-root .sao-conditions-row {
+  display: flex; flex-wrap: wrap; gap: .3rem;
+  justify-content: center;
+  padding: .4rem .5rem; margin-bottom: .4rem;
+}
+#azure-codex-root .sao-condition-badge {
+  font-family: 'Cinzel', serif; font-size: .5rem;
+  letter-spacing: .06em; padding: .2rem .5rem;
+  border-radius: 2px; cursor: default;
+  white-space: nowrap;
+}
+#azure-codex-root .sao-condition-badge.debuff {
+  color: #ef5350; border: 1px solid rgba(239,83,80,.3);
+  background: rgba(239,83,80,.06);
+  animation: ac-debuff-pulse 2s ease-in-out infinite;
+}
+#azure-codex-root .sao-condition-badge.buff {
+  color: #4caf50; border: 1px solid rgba(76,175,80,.3);
+  background: rgba(76,175,80,.06);
+}
+@keyframes ac-debuff-pulse {
+  0%, 100% { opacity: .8; }
+  50% { opacity: 1; box-shadow: 0 0 8px rgba(239,83,80,.3); }
+}
+
 /* ── Stats Grid ── */
 #azure-codex-root .sao-stats-grid {
   display: flex; flex-direction: column; gap: 2px;
@@ -733,6 +759,14 @@
   background: rgba(51,204,255,.08);
   border-color: rgba(51,204,255,.2);
 }
+#azure-codex-root .sao-skill-clickable {
+  cursor: pointer !important;
+}
+#azure-codex-root .sao-skill-clickable:hover {
+  background: rgba(51,204,255,.15) !important;
+  border-color: rgba(51,204,255,.5) !important;
+  box-shadow: 0 0 8px rgba(51,204,255,.25);
+}
 #azure-codex-root .sao-skill-rank {
   font-family: 'Cinzel', serif;
   font-size: .65rem; font-weight: 700;
@@ -796,6 +830,19 @@
   border-color: #ffd740; color: #fff;
   box-shadow: 0 0 10px rgba(255,215,0,.3);
   background: rgba(255,215,0,.12);
+}
+#azure-codex-root .sao-sync-universe-btn {
+  font-family: 'Cinzel', serif; font-size: .55rem;
+  letter-spacing: .08em; cursor: pointer;
+  padding: .35rem .7rem;
+  border: 1px solid rgba(30,144,255,.3);
+  background: rgba(30,144,255,.06); color: #6ab8e8;
+  transition: all .25s; white-space: nowrap;
+}
+#azure-codex-root .sao-sync-universe-btn:hover {
+  border-color: #33ccff; color: #fff;
+  box-shadow: 0 0 10px rgba(51,204,255,.3);
+  background: rgba(51,204,255,.12);
 }
 #azure-codex-root .sao-skill-hint {
   font-family: 'Cormorant Garamond', serif;
