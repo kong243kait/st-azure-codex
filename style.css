@@ -103,22 +103,24 @@
   font-family: 'Cinzel', serif;
   font-size: 0.8rem;
   letter-spacing: 0.12em;
-  cursor: pointer;
+  cursor: grab;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 15px rgba(0,0,0,.6), 0 0 20px rgba(30,144,255,.15);
   transition: all 0.3s cubic-bezier(.4,0,.2,1);
   animation: ac-float-glow 3s ease-in-out infinite;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 #azure-codex-float-btn:hover {
   background: linear-gradient(135deg, #071224 0%, #0a1a32 100%);
   border-color: rgba(51,204,255,.5);
   color: #d0e6f0;
   box-shadow: 0 6px 25px rgba(0,0,0,.8), 0 0 40px rgba(30,144,255,.4);
-  transform: translateY(-2px);
 }
 #azure-codex-float-btn:active {
-  transform: translateY(0);
+  cursor: grabbing;
 }
 
 /* ═══════════════════════════════════════════
@@ -215,6 +217,13 @@
   border-bottom: 1px solid var(--glass-border);
   position: relative;
   z-index: 2;
+}
+#azure-codex-root .ac-drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+#azure-codex-root .ac-drag-handle:active {
+  cursor: grabbing;
 }
 #azure-codex-root .ac-header-left {
   display: flex;
@@ -1509,16 +1518,16 @@
 
 @media (max-width: 768px) {
   #azure-codex-float-btn {
-    bottom: 12px;
-    right: 50%;
-    transform: translateX(50%);
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
     padding: 14px 24px;
     font-size: .85rem;
     border-radius: 40px;
   }
-  #azure-codex-float-btn:hover {
-    transform: translateX(50%) translateY(-2px);
-  }
+  /* When button has been dragged (has explicit left/top from JS)
+     the transform is set to 'none' by JS so it won't re-center */
 
   #azure-codex-root {
     bottom: 0;
@@ -1526,17 +1535,29 @@
     left: 0;
     width: 100%;
     max-width: 100%;
+    max-height: 85vh;
+    max-height: 85dvh;
     border-radius: 16px 16px 0 0;
     border-bottom: none;
     transform-origin: bottom center;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   #azure-codex-root.show-overlay {
     transform: translateY(0) scale(1);
   }
 
   #azure-codex-root .ac-body {
-    max-height: calc(100vh - 140px);
-    max-height: calc(100dvh - 140px);
+    max-height: calc(85vh - 140px);
+    max-height: calc(85dvh - 140px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Disable panel drag on mobile (bottom sheet) */
+  #azure-codex-root .ac-drag-handle {
+    cursor: default;
+    touch-action: auto;
   }
 
   /* Larger touch targets */
@@ -1622,6 +1643,24 @@
   }
   #azure-codex-root .ac-toggle.active::after {
     left: 22px;
+  }
+
+  /* Footer padding for safe area */
+  #azure-codex-root .ac-footer {
+    padding-bottom: calc(.4rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Prevent body overflow flicker when overlay is visible */
+  #azure-codex-root .ac-wrapper {
+    max-height: 85vh;
+    max-height: 85dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #azure-codex-root .ac-body {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 }
 

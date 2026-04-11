@@ -2491,7 +2491,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         const root = document.createElement('div'); root.id = 'azure-codex-root';
         root.innerHTML = `
         <div class="ac-wrapper">
-            <div class="ac-header">
+            <div class="ac-header ac-drag-handle">
                 <div class="ac-header-left"><div class="ac-title">Azure Codex</div><div class="ac-subtitle" id="ac-status-text">NPC & Player Tracker · System Active</div></div>
                 <div class="ac-header-right">
                     <div class="ac-heartbeat"><svg width="120" height="20" viewBox="0 0 120 20"><polyline points="0,10 10,10 15,3 20,17 25,10 30,10 35,10 38,5 41,15 44,10 54,10 59,3 64,17 69,10 79,10 84,5 87,15 90,10 100,10 105,3 110,17 115,10 120,10" fill="none" stroke="#003366" stroke-width="1.2"/><polyline points="0,10 10,10 15,3 20,17 25,10 30,10 35,10 38,5 41,15 44,10 54,10 59,3 64,17 69,10 79,10 84,5 87,15 90,10 100,10 105,3 110,17 115,10 120,10" fill="none" stroke="#1e90ff" stroke-width="0.6" opacity="0.5"/></svg></div>
@@ -2526,8 +2526,198 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         });
         this._updateToggleUI();
 
+        // ── Make floating button draggable (mouse + touch) ──
+        this._makeDraggable(btn, 'ac-float-btn-pos', true);
+
+        // ── Make overlay panel draggable by header (desktop only) ──
+        const header = root.querySelector('.ac-drag-handle');
+        if (header) {
+            this._makePanelDraggable(root, header);
+        }
+
         this.updateFloatBtn();
         this.ui.render();
+    }
+
+    /**
+     * Make an element draggable with mouse & touch support.
+     * Saves position to localStorage. Distinguishes drag vs click.
+     * @param {HTMLElement} el - The element to make draggable
+     * @param {string} storageKey - localStorage key to persist position
+     * @param {boolean} isFloatBtn - Whether this is the floating button (uses bottom/right)
+     */
+    _makeDraggable(el, storageKey, isFloatBtn = false) {
+        let isDragging = false;
+        let hasMoved = false;
+        let startX = 0, startY = 0;
+        let elStartX = 0, elStartY = 0;
+        const DRAG_THRESHOLD = 5; // px before drag activates
+
+        // Restore saved position
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+                const clamped = this._clampToViewport(saved.x, saved.y, el.offsetWidth || 140, el.offsetHeight || 44);
+                el.style.left = clamped.x + 'px';
+                el.style.top = clamped.y + 'px';
+                el.style.right = 'auto';
+                el.style.bottom = 'auto';
+                if (isFloatBtn) el.style.transform = 'none';
+            }
+        } catch { /* ignore */ }
+
+        const getPos = (e) => {
+            if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        };
+
+        const onStart = (e) => {
+            // Don't drag from interactive children
+            const tag = /** @type {HTMLElement} */ (e.target).tagName;
+            if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'].includes(tag)) return;
+
+            isDragging = true;
+            hasMoved = false;
+            const pos = getPos(e);
+            startX = pos.x;
+            startY = pos.y;
+
+            const rect = el.getBoundingClientRect();
+            elStartX = rect.left;
+            elStartY = rect.top;
+
+            el.style.transition = 'none';
+            el.style.animation = 'none';
+        };
+
+        const onMove = (e) => {
+            if (!isDragging) return;
+            const pos = getPos(e);
+            const dx = pos.x - startX;
+            const dy = pos.y - startY;
+
+            if (!hasMoved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+            hasMoved = true;
+
+            e.preventDefault();
+
+            const newX = elStartX + dx;
+            const newY = elStartY + dy;
+            const clamped = this._clampToViewport(newX, newY, el.offsetWidth, el.offsetHeight);
+
+            el.style.left = clamped.x + 'px';
+            el.style.top = clamped.y + 'px';
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+            if (isFloatBtn) el.style.transform = 'none';
+        };
+
+        const onEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            el.style.transition = '';
+
+            if (hasMoved) {
+                // Save position
+                const rect = el.getBoundingClientRect();
+                try {
+                    localStorage.setItem(storageKey, JSON.stringify({ x: rect.left, y: rect.top }));
+                } catch { /* quota full */ }
+            }
+        };
+
+        // Mouse events
+        el.addEventListener('mousedown', onStart);
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+
+        // Touch events
+        el.addEventListener('touchstart', onStart, { passive: true });
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+
+        // Override click to prevent toggle when dragged
+        if (isFloatBtn) {
+            el.addEventListener('click', (e) => {
+                if (hasMoved) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                    hasMoved = false;
+                }
+            }, true); // capture phase
+        }
+    }
+
+    /**
+     * Make the overlay panel draggable by its header (desktop only).
+     * On mobile (≤768px), panel is full-width bottom sheet — no dragging.
+     */
+    _makePanelDraggable(panel, handle) {
+        let isDragging = false;
+        let hasMoved = false;
+        let startX = 0, startY = 0;
+        let elStartX = 0, elStartY = 0;
+        const DRAG_THRESHOLD = 5;
+
+        const isMobile = () => window.innerWidth <= 768;
+
+        const onStart = (e) => {
+            if (isMobile()) return;
+            const tag = /** @type {HTMLElement} */ (e.target).tagName;
+            if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'].includes(tag)) return;
+            if (/** @type {HTMLElement} */ (e.target).closest('.ac-toggle-wrap, .ac-close-btn, .ac-toggle')) return;
+
+            isDragging = true;
+            hasMoved = false;
+            const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+            startX = pos.x;
+            startY = pos.y;
+            const rect = panel.getBoundingClientRect();
+            elStartX = rect.left;
+            elStartY = rect.top;
+            panel.style.transition = 'none';
+        };
+
+        const onMove = (e) => {
+            if (!isDragging || isMobile()) return;
+            const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+            const dx = pos.x - startX;
+            const dy = pos.y - startY;
+            if (!hasMoved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+            hasMoved = true;
+            e.preventDefault();
+            const newX = elStartX + dx;
+            const newY = elStartY + dy;
+            const clamped = this._clampToViewport(newX, newY, panel.offsetWidth, panel.offsetHeight);
+            panel.style.left = clamped.x + 'px';
+            panel.style.top = clamped.y + 'px';
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+            panel.style.transform = 'none';
+        };
+
+        const onEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            panel.style.transition = '';
+        };
+
+        handle.addEventListener('mousedown', onStart);
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+        handle.addEventListener('touchstart', onStart, { passive: true });
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+    }
+
+    /** Clamp coordinates so the element stays within the visible viewport */
+    _clampToViewport(x, y, w, h) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        return {
+            x: Math.max(0, Math.min(x, vw - w)),
+            y: Math.max(0, Math.min(y, vh - h)),
+        };
     }
 
     toggleOverlay() { document.getElementById('azure-codex-root')?.classList.toggle('show-overlay'); }
