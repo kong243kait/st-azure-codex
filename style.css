@@ -142,8 +142,12 @@
   z-index: 9998;
   width: calc(100vw - 40px);
   max-width: 620px;
+  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
   margin: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow:
     0 0 0 1px rgba(1,4,10,.8),
     0 25px 60px rgba(0,10,30,.9),
@@ -167,6 +171,7 @@
   content: '';
   display: block;
   height: 3px;
+  flex-shrink: 0;
   background: linear-gradient(90deg,
     transparent 0%, #182a3d 10%,
     #002244 25%, #1e90ff 40%,
@@ -181,6 +186,10 @@
 #azure-codex-root .ac-wrapper {
   user-select: none;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 #azure-codex-root .ac-wrapper::before,
@@ -217,6 +226,7 @@
   border-bottom: 1px solid var(--glass-border);
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
 }
 #azure-codex-root .ac-drag-handle {
   cursor: grab;
@@ -338,10 +348,11 @@
    ═══════════════════════════════════════════ */
 
 #azure-codex-root .ac-body {
-  max-height: calc(100vh - 160px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  transition: max-height .5s cubic-bezier(.4,0,.2,1);
+  -webkit-overflow-scrolling: touch;
   position: relative;
   z-index: 1;
 }
@@ -771,6 +782,7 @@
   align-items: center;
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
 }
 #azure-codex-root .ac-footer::before {
   content: '';
@@ -1533,10 +1545,11 @@
     bottom: 0;
     right: 0;
     left: 0;
+    top: auto;
     width: 100%;
     max-width: 100%;
-    max-height: 85vh;
-    max-height: 85dvh;
+    max-height: 80vh;
+    max-height: 80dvh;
     border-radius: 16px 16px 0 0;
     border-bottom: none;
     transform-origin: bottom center;
@@ -1546,18 +1559,35 @@
     transform: translateY(0) scale(1);
   }
 
+  /* Disable panel drag on mobile (bottom sheet) */
+  #azure-codex-root .ac-drag-handle {
+    cursor: default;
+    touch-action: auto;
+  }
+
+  /* Header: prevent shrink */
+  #azure-codex-root .ac-header {
+    flex-shrink: 0;
+  }
+
+  /* Body: properly scrollable within constrained panel */
   #azure-codex-root .ac-body {
-    max-height: calc(85vh - 140px);
-    max-height: calc(85dvh - 140px);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Disable panel drag on mobile (bottom sheet) */
-  #azure-codex-root .ac-drag-handle {
-    cursor: default;
-    touch-action: auto;
+  /* Tabs: prevent shrink */
+  #azure-codex-root .ac-tabs {
+    flex-shrink: 0;
+  }
+
+  /* Footer: prevent shrink, safe area */
+  #azure-codex-root .ac-footer {
+    flex-shrink: 0;
+    padding-bottom: calc(.4rem + env(safe-area-inset-bottom, 0px));
   }
 
   /* Larger touch targets */
@@ -1643,24 +1673,6 @@
   }
   #azure-codex-root .ac-toggle.active::after {
     left: 22px;
-  }
-
-  /* Footer padding for safe area */
-  #azure-codex-root .ac-footer {
-    padding-bottom: calc(.4rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* Prevent body overflow flicker when overlay is visible */
-  #azure-codex-root .ac-wrapper {
-    max-height: 85vh;
-    max-height: 85dvh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-  #azure-codex-root .ac-body {
-    flex: 1 1 auto;
-    min-height: 0;
   }
 }
 

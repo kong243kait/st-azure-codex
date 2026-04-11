@@ -2551,18 +2551,23 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         let hasMoved = false;
         let startX = 0, startY = 0;
         let elStartX = 0, elStartY = 0;
-        const DRAG_THRESHOLD = 5; // px before drag activates
+        const DRAG_THRESHOLD = 8; // px before drag activates (larger for touch)
 
         // Restore saved position
         try {
             const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
             if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
-                const clamped = this._clampToViewport(saved.x, saved.y, el.offsetWidth || 140, el.offsetHeight || 44);
-                el.style.left = clamped.x + 'px';
-                el.style.top = clamped.y + 'px';
-                el.style.right = 'auto';
-                el.style.bottom = 'auto';
-                if (isFloatBtn) el.style.transform = 'none';
+                // Wait for element to be in DOM and have dimensions
+                requestAnimationFrame(() => {
+                    const w = el.offsetWidth || 140;
+                    const h = el.offsetHeight || 44;
+                    const clamped = this._clampToViewport(saved.x, saved.y, w, h);
+                    el.style.left = clamped.x + 'px';
+                    el.style.top = clamped.y + 'px';
+                    el.style.right = 'auto';
+                    el.style.bottom = 'auto';
+                    if (isFloatBtn) el.style.transform = 'none';
+                });
             }
         } catch { /* ignore */ }
 
@@ -2572,9 +2577,12 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         };
 
         const onStart = (e) => {
-            // Don't drag from interactive children
-            const tag = /** @type {HTMLElement} */ (e.target).tagName;
-            if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'].includes(tag)) return;
+            // For the float button itself, allow drag on the button
+            // For other elements, don't drag from interactive children
+            if (!isFloatBtn) {
+                const tag = /** @type {HTMLElement} */ (e.target).tagName;
+                if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'].includes(tag)) return;
+            }
 
             isDragging = true;
             hasMoved = false;
@@ -2631,7 +2639,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onEnd);
 
-        // Touch events
+        // Touch events — touchstart must NOT be passive so we can track it
         el.addEventListener('touchstart', onStart, { passive: true });
         document.addEventListener('touchmove', onMove, { passive: false });
         document.addEventListener('touchend', onEnd);
@@ -2643,8 +2651,9 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                     e.stopImmediatePropagation();
                     e.preventDefault();
                     hasMoved = false;
+                    return false;
                 }
-            }, true); // capture phase
+            }, true); // capture phase — fires before the normal click handler
         }
     }
 
