@@ -24,7 +24,7 @@ const EXT_NAME   = 'third-party/st-azure-codex';
 const META_KEY   = 'azure_codex';
 const LOG_PREFIX = '[AzureCodex]';
 
-const DEFAULT_SETTINGS = { autoDetect: true, autoDetectStats: true, showFloatBtn: true };
+const DEFAULT_SETTINGS = { autoDetect: true, autoDetectStats: true, showFloatBtn: true, enabled: true };
 
 // ─── SAO RPG Config ───
 const SAO_STATS = ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'];
@@ -75,6 +75,11 @@ const COMMON_WORDS = new Set([
     'how','its','may','new','now','old','see','way','who','did','get','let','say','she','too','use','him',
     'than','then','them','been','have','said','each','will','they','this','that','with','what','your',
     'from','just','very','some','more','also','into','note','action','system','user','info','error','warning','true','false',
+    // Thai pronouns, group words, and common terms that are NOT NPC names
+    'ข้า','เจ้า','คุณ','เธอ','มึง','เขา','เรา','พวก','ฉัน','ผม','ท่าน','นาย','นาง','เด็ก','แก',
+    'กลุ่ม','พวกเรา','พวกมึง','พวกเขา','พวกเจ้า','พวกมัน','ทีม','ฝ่าย','พรรค','สมาชิก','สหาย',
+    'ตัวละคร','ตัวเอก','คนแปลกหน้า','ศัตรู','มิตร','สหายร่วมรบ','คู่ต่อสู้','คนแปลกหน้า',
+    'ทุกคน','ผู้คน','ใคร','อะไร','อะไรนะ','ทำไม','ทำไมจ๊ะ',
 ]);
 
 const NOT_ITEMS = new Set([
@@ -119,7 +124,13 @@ class StatDetector {
         if (!name || name.length < 2 || name.length > 20) return false;
         const l = name.toLowerCase();
         if (STAT_IGNORE_WORDS.has(l)) return false;
-        return KNOWN_STATS.has(l) || Math.abs(value) <= 99999;
+        // Accept known stats, custom universe stats, or any value within range
+        return KNOWN_STATS.has(l) || this._dynamicStats?.has(l) || Math.abs(value) <= 99999;
+    }
+
+    /** Allow custom universe stat names to pass validation */
+    setDynamicStats(names) {
+        this._dynamicStats = new Set((names || []).map(n => n.toLowerCase()));
     }
 }
 
@@ -187,7 +198,16 @@ class DataEngine {
 
     levelUp(newLevel) {
         const p = this.player;
-        if (newLevel <= p.level) { p.level = newLevel; return 0; }
+        if (newLevel <= p.level) {
+            // FIX H3: On level-down, reclaim stat points that would have been gained
+            if (newLevel < p.level) {
+                const lostPoints = (p.level - newLevel) * POINTS_PER_LEVEL;
+                p.statPoints = Math.max(0, p.statPoints - lostPoints);
+            }
+            p.level = newLevel;
+            this.recalcDerived();
+            return 0;
+        }
         const gained = (newLevel - p.level) * POINTS_PER_LEVEL;
         p.statPoints += gained;
         p.level = newLevel;
@@ -232,20 +252,20 @@ class DataEngine {
             }
         }
         
-        // 2. Fuzzy match: substring containment ("Naruto" matches "Naruto Uzumaki", "นารูโตะ" matches "นารูโตะ อุซึมากิ")
-        if (searchAlias.length >= 3) {
+        // 2. Fuzzy match: substring containment (min 4 chars to prevent false merges like Yu/Yuki)
+        if (searchAlias.length >= 4) {
             for (const [key, bot] of Object.entries(this.bots)) {
                 const botName = (bot.name || '').toLowerCase();
                 const botNick = (bot.nickname || '').toLowerCase();
                 // Check if search term contains or is contained by existing bot name/nickname
-                if (botName.length >= 3 && (botName.includes(searchAlias) || searchAlias.includes(botName))) {
+                if (botName.length >= 4 && (botName.includes(searchAlias) || searchAlias.includes(botName))) {
                     // Auto-add as alias for instant future matching
                     if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
                         bot.aliases.push(name.trim());
                     }
                     return key;
                 }
-                if (botNick.length >= 3 && botNick !== botName && (botNick.includes(searchAlias) || searchAlias.includes(botNick))) {
+                if (botNick.length >= 4 && botNick !== botName && (botNick.includes(searchAlias) || searchAlias.includes(botNick))) {
                     if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
                         bot.aliases.push(name.trim());
                     }
@@ -255,7 +275,7 @@ class DataEngine {
                 if (bot.aliases) {
                     for (const alias of bot.aliases) {
                         const al = alias.trim().toLowerCase();
-                        if (al.length >= 3 && (al.includes(searchAlias) || searchAlias.includes(al))) {
+                        if (al.length >= 4 && (al.includes(searchAlias) || searchAlias.includes(al))) {
                             if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
                                 bot.aliases.push(name.trim());
                             }
@@ -308,9 +328,14 @@ class DataEngine {
     addItem(name, qty = 1, type = '') {
         const n = name?.trim();
         if (!n || n.length < 2 || n.length > 50) return;
+        // Reject HTML tags, markdown artifacts
+        if (/<[^>]+>/.test(n)) return;
         // Reject junk: all-punctuation, all-digits, all-whitespace, or common noise
         if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(n)) return;
         if (/^\d+$/.test(n)) return;
+        // Reject common Thai verbs/trigger words that aren't real items
+        const lower = n.toLowerCase();
+        if (/^(ได้รับ|เก็บได้|พบ|หยิบ|ซื้อ|รับ|ใช้|ไม่มีชื่อ|ไม่ระบุ|ไม่ทราบ|unknown|unnamed|no name|none|null)$/i.test(lower)) return;
         // Auto-classify item type if not provided
         if (!type) {
             if (/(?:sword|blade|shield|armor|gun|bow|ring|necklace|helmet|boots|gauntlet|robe|staff|wand|spear|axe|ดาบ|โล่|เกราะ|อาวุธ|ปืน|ธนู|แหวน|สร้อย|หมวก|รองเท้า|ถุงมือ|เสื้อคลุม|ไม้เท้า|ขวาน)/i.test(n)) {
@@ -353,20 +378,22 @@ class DataEngine {
         try {
             const ctx = getContext();
             if (!ctx.chatMetadata) return;
-            // FIX: JSON round-trip fallback for safety
+            // FIX C3: Don't persist _backup — it's a runtime-only swipe rollback mechanism
             let cloned;
             try {
                 cloned = {
                     bots: structuredClone(this.bots),
                     inventory: structuredClone(this.inventory),
                     player: structuredClone(this.player),
-                    _backup: structuredClone(this._backup),
                 };
             } catch {
-                cloned = JSON.parse(JSON.stringify({ bots: this.bots, inventory: this.inventory, player: this.player, _backup: this._backup }));
+                cloned = JSON.parse(JSON.stringify({ bots: this.bots, inventory: this.inventory, player: this.player }));
             }
             if (!cloned.player.skillTrees) cloned.player.skillTrees = {};
-            ctx.chatMetadata[META_KEY] = cloned;
+            // FIX: Merge into existing metadata instead of replacing, to preserve
+            // extra flags like _universeSynced that live alongside the game data
+            const existing = ctx.chatMetadata[META_KEY] || {};
+            ctx.chatMetadata[META_KEY] = { ...existing, ...cloned };
             saveMetadataDebounced();
             
             this.injectTrackerContext();
@@ -375,13 +402,20 @@ class DataEngine {
 
     injectTrackerContext() {
         if (!this.player) return;
+        // If extension is disabled, remove the injected prompt
+        if (extension_settings[META_KEY]?.enabled === false) {
+            if (typeof setExtensionPrompt === 'function') {
+                setExtensionPrompt('azure_codex_tracker', '', extension_prompt_types.IN_CHAT, 1, false);
+            }
+            return;
+        }
         const p = this.player;
         const statList = p.universe?.statNames || SAO_STATS;
         
         // ── Build comprehensive status block ──
         let text = `[RPG Tracker — Live Player Status]\n`;
         text += `${p.universe?.levelName || 'Level'}: ${p.universe?.levelDisplay || p.level || 1}\n`;
-        text += `HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | Gold: ${p.gold}\n`;
+        text += `HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | ${p.universe?.expName || 'EXP'}: ${p.exp}/${p.expMax} | ${p.universe?.goldName || 'Gold'}: ${p.gold}\n`;
         
         // KO/Death state
         if (p.hp <= 0) {
@@ -422,13 +456,86 @@ class DataEngine {
             text += `Inventory:\n${this.inventory.map(i => `- ${i.name} x${i.qty || 1}${i.type ? ` [${i.type}]` : ''}`).join('\n')}\n`;
         }
         
-        text += `\n[System Policy: STRICT ENFORCEMENT.`;
-        text += ` The player can ONLY perform actions that align with their current Level (${p.level}), Stats, and Learned Skills listed above.`;
-        if (p.hp <= 0) {
-            text += ` THE PLAYER IS UNCONSCIOUS — they CANNOT act, fight, or cast anything. Narrate them as incapacitated until revived.`;
+        // ── NPC Relationships (so AI knows relationship context) ──
+        const npcEntries = Object.values(this.bots || {}).filter(b => (b.appearances || 0) >= MIN_APPEARANCES || b.affection > 0 || b.annoyance > 0);
+        if (npcEntries.length > 0) {
+            text += `NPC Relationships:\n${npcEntries.map(b => {
+                const stage = STAGE_NAMES[b.stage] || 'Unknown';
+                return `- ${b.nickname || b.name}: Affection ${b.affection}/100, Annoyance ${b.annoyance}/100 (${stage})`;
+            }).join('\n')}\n`;
         }
-        text += ` If the player attempts an action beyond their capabilities or claims unlisted powers, FAIL the attempt organically in the narrative.`;
-        text += ` Skills that cost MP cannot be used if MP is insufficient. Do not allow God-moding or stat cheating.]`;
+        
+        text += `\n[System Policy: STRICT RPG ENFORCEMENT — Stats, Skills, and Inventory MUST affect gameplay.]`;
+        
+        // ── Stat-based action resolution ──
+        text += `\n\n— ACTION RESOLUTION —`;
+        text += `\nWhen the player attempts any significant action (combat, persuasion, crafting, stealth, etc), evaluate their relevant stat:`;
+        for (const stat of statList) {
+            const val = p.stats[stat] || 0;
+            const info = STAT_INFO[stat] || { name: stat, desc: 'Attribute' };
+            text += `\n  ${stat} = ${val} → ${val <= 3 ? 'Very Weak' : val <= 7 ? 'Below Average' : val <= 12 ? 'Average' : val <= 18 ? 'Strong' : val <= 25 ? 'Very Strong' : 'Superhuman'}`;
+        }
+        text += `\nUse these stat values to determine outcomes. Low stats should cause failures/complications. High stats should grant advantages.`;
+        text += `\nMentally roll d20 + relevant stat modifier. Result determines narrative outcome:`;
+        text += `\n  d20+stat < 8 = FAILURE (describe complication). 8-14 = PARTIAL SUCCESS (succeed with cost). 15-22 = CLEAN SUCCESS. 23+ = CRITICAL SUCCESS (bonus effect).`;
+        text += `\nNarrate the stat check naturally without showing dice numbers. Example: "${statList[0]} is low, so the attack misses" or "high ${statList[1]} allows graceful dodge".`;
+        
+        // ── Skill enforcement ──
+        if (p.skills && p.skills.length > 0) {
+            text += `\n\n— SKILL ENFORCEMENT —`;
+            text += `\nThe player can ONLY use skills from the "Learned Skills" list above.`;
+            text += `\nIf the player uses a skill with MP Cost, DEDUCT that MP from their current pool (MP: ${p.mp}/${p.mpMax}).`;
+            text += `\nIf MP is insufficient for a skill, the skill FAILS — narrate magical exhaustion/fizzle.`;
+            text += `\nHigher-rank skills (S > A > B > C > D > F) are proportionally more powerful.`;
+            text += `\nIf the player tries to use a skill NOT in their list, DENY it. Narrate: "...but nothing happens. That technique has not been mastered yet."`;
+        } else {
+            text += `\n\n— NO SKILLS LEARNED —`;
+            text += `\nThe player has NO learned skills. They can only perform basic physical actions and cannot use any named techniques.`;
+        }
+        
+        // ── HP/Damage enforcement ──
+        text += `\n\n— HP & DAMAGE —`;
+        text += `\nCurrent HP: ${p.hp}/${p.hpMax}. When the player takes damage, ALWAYS include a status update at the end of your reply.`;
+        if (p.hp <= 0) {
+            text += `\n‼ THE PLAYER IS UNCONSCIOUS (HP=0). They CANNOT act, fight, move, or speak coherently. ONLY narrate them as incapacitated until healed/revived.`;
+        } else if (p.hp <= p.hpMax * 0.2) {
+            text += `\n⚠ CRITICALLY INJURED (HP < 20%). All physical actions are severely weakened. Player struggles, bleeds, or collapses.`;
+        } else if (p.hp <= p.hpMax * 0.5) {
+            text += `\n⚠ WOUNDED (HP < 50%). Player shows visible injuries. Reduce combat effectiveness.`;
+        }
+
+        // ── Inventory enforcement ──
+        if (this.inventory && this.inventory.length > 0) {
+            text += `\n\n— INVENTORY —`;
+            text += `\nThe player can only USE items from their inventory. If they try to use an item they don't have, deny it.`;
+            text += `\nWhen an item is used/consumed, mention it so the tracker can deduct it.`;
+        } else {
+            text += `\n\n— EMPTY INVENTORY —`;
+            text += `\nThe player has NO items. They cannot use potions, scrolls, or any consumable.`;
+        }
+
+        // ── Level scaling ──
+        text += `\n\n— LEVEL SCALING —`;
+        text += `\nPlayer Level: ${p.level}. Enemies and challenges should be scaled near this level.`;
+        text += `\nLevel 1-5: Weak enemies (goblins, slimes). Level 6-15: Mid-tier threats. Level 16-30: Elite enemies. Level 31+: Legendary challenges.`;
+        text += `\nThe player should NOT easily defeat enemies far above their level.`;
+        
+        // ── Status Update Format (CRITICAL for tracker to parse) ──
+        text += `\n\n— MANDATORY STATUS UPDATE —`;
+        text += `\nAt the END of EVERY reply where HP, MP, EXP, Gold, or Stats change, you MUST include a structured block like this:`;
+        text += `\n[Status: HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | ${p.universe?.expName || 'EXP'}: <new_value>/${p.expMax} | ${p.universe?.goldName || 'Gold'}: <new_value>]`;
+        text += `\nAlso include stat changes: [${statList[0]}: <value>] etc.`;
+        text += `\nIf a new skill is learned: [ได้รับสกิล: <skill_name> (Rank <X>) — <description>]`;
+        text += `\nIf an item is gained: [ได้รับไอเท็ม: <item_name> x<qty>]`;
+        text += `\nIf an item is lost: [เสียไอเท็ม: <item_name>]`;
+        text += `\nThis structured output is ESSENTIAL for the game system to track progress accurately.`;
+
+        // ── NPC naming consistency ──
+        if (npcEntries.length > 0) {
+            text += `\n\n— NPC NAMING —`;
+            text += `\nWhen mentioning tracked NPCs, ALWAYS use the exact names shown in "NPC Relationships" above. Do NOT switch between languages or use alternate names.`;
+        }
+        text += `]`;
         
         if (typeof setExtensionPrompt === 'function') {
             setExtensionPrompt('azure_codex_tracker', text, extension_prompt_types.IN_CHAT, 1, false);
@@ -458,6 +565,8 @@ class DataEngine {
                 if (this.player.stats[s] == null) this.player.stats[s] = 5;
             }
             this.recalcDerived();
+            // Retroactively clean up junk skill entries from older, looser filters
+            this.purgeJunkSkills();
             console.debug(LOG_PREFIX, `Loaded: ${Object.keys(this.bots).length} NPCs, Lv.${this.player.level}, Gold:${this.player.gold}, Skills:${this.player.skills.length}`);
             this.injectTrackerContext();
         } catch (err) {
@@ -479,19 +588,22 @@ class DataEngine {
     restore() {
         if (!this._backup) return;
         
-        // Preserve user-added aliases, nicknames, and departments across rollbacks
+        // FIX C2: Clone backup first, then apply current aliases/nicknames to the CLONE
+        // This prevents permanent contamination of the backup data
+        const safeClone = (obj) => obj ? JSON.parse(JSON.stringify(obj)) : null;
+        const restoredBots = safeClone(this._backup.bots) || {};
+        
+        // Preserve user-edited aliases, nicknames, and departments in the restored copy
         for (const [k, currentBot] of Object.entries(this.bots)) {
-            if (this._backup.bots[k]) {
-                const bBot = this._backup.bots[k];
-                bBot.aliases = currentBot.aliases ? [...currentBot.aliases] : [];
-                bBot.nickname = currentBot.nickname;
-                bBot.dept = currentBot.dept;
-                bBot.name = currentBot.name;
+            if (restoredBots[k]) {
+                restoredBots[k].aliases = currentBot.aliases ? [...currentBot.aliases] : [];
+                restoredBots[k].nickname = currentBot.nickname;
+                restoredBots[k].dept = currentBot.dept;
+                restoredBots[k].name = currentBot.name;
             }
         }
         
-        const safeClone = (obj) => obj ? JSON.parse(JSON.stringify(obj)) : null;
-        this.bots = safeClone(this._backup.bots);
+        this.bots = restoredBots;
         this.inventory = safeClone(this._backup.inventory);
         this.player = safeClone(this._backup.player);
         this.recalcDerived();
@@ -501,12 +613,26 @@ class DataEngine {
     addSkill(name, rank = '?', desc = '', stat = '') {
         const n = name?.trim();
         if (!n || n.length < 2 || n.length > 60) return false;
+        // Reject HTML tags, markdown artifacts, formatting junk
+        if (/<[^>]+>/.test(n)) return false;
+        // Reject any remaining HTML fragments: closing tags, entities, partial tags
+        if (/(?:<\/?\w|&\w+;|\/>|<\/|^\/)/.test(n)) return false;
         // Reject junk: all-punctuation, all-digits, noise keywords
         if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(n)) return false;
         if (/^\d+$/.test(n)) return false;
+        // Reject if starts with punctuation or whitespace-only
+        if (/^[\s\-—_.,;:!?'"`*~#|/\\+=@$%^&<>]/.test(n)) return false;
+        // Reject common words/articles/pronouns that aren't skill names
+        if (/^(a|an|the|is|are|was|were|it|its|that|this|to|of|in|on|at|by|or|so|if|do|no|up|my|me|we|us|as|be)$/i.test(n)) return false;
         // Reject if the "name" is just a common keyword or formatting artifact
         const lower = n.toLowerCase();
         if (/^(skill|สกิล|rank|แรงค์|desc|description|คำอธิบาย|req|requirement|level|type|class|stat|none|null|undefined|n\/a|no name|-+|\?+)$/i.test(lower)) return false;
+        // Reject common Thai trigger/verb words that aren't skill names
+        if (/^(เรียนรู้|ปลดล็อก|ได้รับ|ไม่มีชื่อ|ไม่ระบุ|ไม่ทราบ|ใหม่|เก่า|เก็บได้|สกิลใหม่|ความสามารถใหม่|ทักษะใหม่|unknown|unnamed|no name|learned|unlocked|acquired|obtained|new skill|active|passive|basic|normal|special)$/i.test(lower)) return false;
+        // Reject if contains stray HTML-like content
+        if (/div|span|class=|style=|<br|<p|<img|<a\s|href|src=|onclick/i.test(n)) return false;
+        // Reject very short Thai words (1 Thai char) — too ambiguous
+        if (/^[\u0E00-\u0E7F]{1}$/.test(n)) return false;
         const existing = this.player.skills.find(s => s.name.toLowerCase() === lower);
         if (existing) {
             // Update rank/desc if provided
@@ -528,6 +654,28 @@ class DataEngine {
         return true;
     }
 
+    /** Retroactively purge junk skills that slipped through older, looser filters */
+    purgeJunkSkills() {
+        const before = this.player.skills.length;
+        this.player.skills = this.player.skills.filter(s => {
+            const n = s.name;
+            if (!n || n.length < 2 || n.length > 60) return false;
+            if (/<[^>]+>/.test(n)) return false;
+            if (/(?:<\/?\w|&\w+;|\/>|<\/|^\/)/.test(n)) return false;
+            if (/^[\s\d\-\u2014_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(n)) return false;
+            if (/^[\s\-\u2014_.,;:!?'"`*~#|/\\+=@$%^&<>]/.test(n)) return false;
+            if (/div|span|class=|style=|<br|<p|<img|<a\s|href|src=|onclick/i.test(n)) return false;
+            if (/^[\u0E00-\u0E7F]{1}$/.test(n)) return false;
+            if (/^(a|an|the|is|are|was|were|it|its|that|this|to|of|in|on|at|by|or|so|if|do|no|up|my|me|we|us|as|be)$/i.test(n)) return false;
+            if (/^(skill|\u0e2a\u0e01\u0e34\u0e25|rank|\u0e41\u0e23\u0e07\u0e04\u0e4c|desc|description|req|level|type|class|stat|none|null|undefined|n\/a|no name|-+|\?+)$/i.test(n.toLowerCase())) return false;
+            if (/^(\u0e40\u0e23\u0e35\u0e22\u0e19\u0e23\u0e39\u0e49|\u0e1b\u0e25\u0e14\u0e25\u0e47\u0e2d\u0e01|\u0e44\u0e14\u0e49\u0e23\u0e31\u0e1a|\u0e44\u0e21\u0e48\u0e21\u0e35\u0e0a\u0e37\u0e48\u0e2d|\u0e44\u0e21\u0e48\u0e23\u0e30\u0e1a\u0e38|\u0e43\u0e2b\u0e21\u0e48|\u0e40\u0e01\u0e48\u0e32|unknown|unnamed|new skill|active|passive|basic|normal|special)$/i.test(n.toLowerCase())) return false;
+            return true;
+        });
+        const removed = before - this.player.skills.length;
+        if (removed > 0) console.debug('[AzureCodex]', `Purged ${removed} junk skill(s)`);
+        return removed;
+    }
+
     reset() { this.bots = {}; this.inventory = []; this.player = DataEngine.defaultPlayer(); }
 }
 
@@ -540,7 +688,7 @@ const STAGE_COLORS = ['#555','#5a7a92','#4a90d9','#6ab8e8','#e8a06a','#e76a6a','
 class UIRenderer {
     constructor(data, callbacks) {
         this.data = data;
-        this.callbacks = callbacks; // { onEditNpc, onRemoveNpc, onUseItem, onDropItem, onReset }
+        this.callbacks = callbacks; // { onEditNpc, onRemoveNpc, onUseItem, onDropItem, onRetryEpithet, onReset }
         this.activeTab = 'all';
         this.selectedNpc = null;
     }
@@ -606,21 +754,31 @@ class UIRenderer {
             h += `<button class="ac-back-btn" id="ac-back-to-grid">← BACK</button>
                 <div class="ac-detail">
                     <div class="ac-detail-head">
-                        <span class="ac-detail-name">${esc(b.name)}</span>
-                        <span class="ac-detail-nick">&ldquo;${esc(b.nickname)}&rdquo;</span>
-                        <div class="ac-detail-dept">${esc(b.dept)}</div>
+                        <span class="ac-detail-name">${esc(b.nickname || b.name)}</span>
+                        ${b.nickname !== b.name ? `<span class="ac-detail-nick">&ldquo;${esc(b.name)}&rdquo;</span>` : ''}
+                        <div class="ac-detail-dept" style="${b.dept === '…' ? 'opacity:.4' : ''}">${esc(b.dept === '…' ? 'กำลังวิเคราะห์ฉายา...' : b.dept)}</div>
                     </div>
+
+                    ${b.aliases && b.aliases.length > 0 ? `<div style="text-align:center;margin-bottom:.6rem;"><span style="font-family:'Cormorant Garamond',serif;font-size:.6rem;color:var(--tx3);font-style:italic;">aka: ${b.aliases.map(a => esc(a)).join(' · ')}</span></div>` : ''}
+
                     <div class="ac-stats3">
-                        <div class="ac-stat-box"><span class="ac-stat-val" style="color:#e06070">${b.affection}</span><span class="ac-stat-label">AFFECTION</span></div>
-                        <div class="ac-stat-box"><span class="ac-stat-val" style="color:#7090d0">${b.annoyance}</span><span class="ac-stat-label">ANNOYANCE</span></div>
-                        <div class="ac-stat-box"><span class="ac-stat-val" style="color:${stageColor}">${STAGE_NAMES[b.stage] ?? 'Unknown'}</span><span class="ac-stat-label">STAGE</span></div>
+                        <div class="ac-stat-box lk"><span class="ac-stat-val lk">${b.affection}</span><span class="ac-stat-label">❤ AFFECTION</span></div>
+                        <div class="ac-stat-box an"><span class="ac-stat-val an">${b.annoyance}</span><span class="ac-stat-label">💢 ANNOYANCE</span></div>
+                        <div class="ac-stat-box st"><span class="ac-stat-val st" style="color:${stageColor}">${STAGE_NAMES[b.stage] ?? 'Unknown'}</span><span class="ac-stat-label">★ STAGE</span></div>
                     </div>
                     <div class="ac-gauge-detail"><span class="ac-gauge-label">❤ AFFECTION</span><div class="ac-gauge-track"><div class="ac-gauge-fill" style="width:${b.affection}%;background:linear-gradient(90deg,#8b1a2d,#e06070,#ff8fa0)"></div></div><span class="ac-gauge-val">${b.affection}/100</span></div>
                     <div class="ac-gauge-detail"><span class="ac-gauge-label">💢 ANNOYANCE</span><div class="ac-gauge-track"><div class="ac-gauge-fill" style="width:${b.annoyance}%;background:linear-gradient(90deg,#1a3a6b,#5080c0,#7090d0)"></div></div><span class="ac-gauge-val">${b.annoyance}/100</span></div>
                     <div class="ac-pips-wrap"><div class="ac-pips-head"><span>ROUTE PROGRESS</span><span style="color:${stageColor}">${STAGE_NAMES[b.stage]} (${b.stage}/6)</span></div><div class="ac-pips">${renderPips(b.stage)}</div></div>
+
+                    <div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin:.6rem 0;">
+                        <span class="ac-info-badge" title="จำนวนครั้งที่ NPC ปรากฏในแชท">👁 ${b.appearances || 0} ครั้งที่ปรากฏ</span>
+                        ${b.mood ? `<span class="ac-info-badge" title="อารมณ์ล่าสุด">🎭 ${esc(b.mood)}</span>` : ''}
+                    </div>
+
                     <div class="ac-quote">${getInsight(b.affection, b.annoyance)}</div>
                     <div class="ac-detail-actions">
                         <button class="ac-btn ac-btn-edit" data-npc-id="${escAttr(id)}">✎ EDIT</button>
+                        ${b.dept === '…' ? `<button class="ac-btn" id="ac-retry-epithet" data-npc-name="${escAttr(b.nickname || b.name)}">✦ GET EPITHET</button>` : ''}
                         <button class="ac-btn ac-btn-remove" data-npc-id="${escAttr(id)}">✕ REMOVE</button>
                     </div>
                 </div>`;
@@ -657,7 +815,7 @@ class UIRenderer {
                 <div class="sao-bar-row"><span class="sao-bar-label mp-label">MP</span><div class="sao-bar"><div class="sao-bar-fill sao-mp" style="width:${mpPct}%"></div></div><span class="sao-bar-val">${p.mp} / ${p.mpMax}</span></div>
                 <div class="sao-bar-row"><span class="sao-bar-label exp-label" title="${esc(p.universe?.expName || 'EXP')}">${esc((p.universe?.expName || 'EXP').substring(0,3))}</span><div class="sao-bar"><div class="sao-bar-fill sao-exp" style="width:${expPct}%"></div></div><span class="sao-bar-val">${p.exp} / ${p.expMax}</span></div>
             </div>
-            <div class="sao-gold-row">💰 <span class="sao-gold-val">${goldStr}</span> Gold</div>
+            <div class="sao-gold-row">💰 <span class="sao-gold-val">${goldStr}</span> ${esc(p.universe?.goldName || 'Gold')}</div>
             ${p.hp <= 0 ? `<div class="sao-points-banner" style="color:#ef5350;border-color:rgba(239,83,80,.3);background:rgba(239,83,80,.06);animation:none;">💀 PLAYER KO — HP = 0</div>` : ''}
             ${p.conditions && p.conditions.length > 0 ? `<div class="sao-conditions-row">${p.conditions.map(c => {
                 const isDebuff = ['Poisoned','Stunned','Burning','Frozen','Paralyzed','Weakened','Blinded'].includes(c.name);
@@ -690,7 +848,7 @@ class UIRenderer {
         } else {
             for (const skill of skills) {
                 const rc = RANK_COLORS[skill.rank?.toUpperCase()] || RANK_COLORS['F'] || '#888';
-                const sInfo = skill.stat ? STAT_INFO[skill.stat.toUpperCase()] : null;
+                const sInfo = skill.stat ? (STAT_INFO[skill.stat.toUpperCase()] || { name: skill.stat, desc: '', icon: '✨', color: '#6ab8e8' }) : null;
                 h += `<div class="sao-skill-item sao-skill-clickable" data-skill="${escAttr(skill.name)}" style="cursor:pointer">
                     <span class="sao-skill-rank" style="color:${rc};border-color:${rc}">${esc(skill.rank || '?')}</span>
                     <div class="sao-skill-info">
@@ -744,6 +902,15 @@ class UIRenderer {
             c.addEventListener('click', (e) => { this.selectedNpc = e.currentTarget.dataset.target; this.render(); })
         );
         document.getElementById('ac-back-to-grid')?.addEventListener('click', () => { this.selectedNpc = null; this.render(); });
+        // Retry epithet button
+        document.getElementById('ac-retry-epithet')?.addEventListener('click', (e) => {
+            const name = e.currentTarget.dataset.npcName;
+            if (name) {
+                e.currentTarget.textContent = '⏳ Loading...';
+                e.currentTarget.style.pointerEvents = 'none';
+                cb.onRetryEpithet?.([name]);
+            }
+        });
         // FIX: Use callbacks instead of global controller reference
         el.querySelectorAll('.ac-btn-edit').forEach(b =>
             b.addEventListener('click', (e) => { e.stopPropagation(); cb.onEditNpc?.(e.currentTarget.dataset.npcId); })
@@ -796,6 +963,8 @@ class AzureCodexController {
         this.detector = new StatDetector();
         this._initialized = false;
         this._eventsRegistered = false; // FIX: guard against double registration
+        this._isBulkScanning = false;
+        this._personaSynced = false; // FIX M3: cache flag to avoid redundant persona regex
         this.lastProcessedIdx = -1;
 
         // FIX: UIRenderer uses callbacks, no global reference
@@ -807,11 +976,14 @@ class AzureCodexController {
                 if (name) {
                     this.saveAndRender();
                     notify('info', `Used: ${name}`, '✨ Item Used');
+                    // FIX H4: Append to textarea instead of overwriting, and don't auto-send
+                    // This prevents loss of user-typed text
                     const textarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('send_textarea'));
                     if (textarea) {
-                        textarea.value = `*uses ${name}*`;
+                        const existing = textarea.value.trim();
+                        textarea.value = existing ? `${existing}\n*uses ${name}*` : `*uses ${name}*`;
                         textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                        document.getElementById('send_but')?.click();
+                        textarea.focus();
                     }
                 }
             },
@@ -819,6 +991,9 @@ class AzureCodexController {
                 this.data.removeItem(itemName, 1);
                 this.saveAndRender();
                 notify('info', `Dropped 1× ${itemName}`, '📦 Item Dropped');
+            },
+            onRetryEpithet: (names) => {
+                this.assignNpcEpithets(names);
             },
             onAllocateStat: (stat) => {
                 const ok = this.data.allocateStat(stat, 1);
@@ -839,9 +1014,9 @@ class AzureCodexController {
                 }
             },
             onStatInfo: async (stat) => {
-                const info = STAT_INFO[stat];
+                // FIX: Use fallback for custom universe stats not in STAT_INFO
+                const info = STAT_INFO[stat] || { name: stat, desc: 'Dynamic Universal Attribute', icon: '✨', color: '#6ab8e8' };
                 const val = this.data.player.stats[stat] ?? 0;
-                if (!info) return;
 
                 if (!this.data.player.skillTrees) this.data.player.skillTrees = {};
                 let treeTokens = this.data.player.skillTrees[stat];
@@ -887,18 +1062,25 @@ class AzureCodexController {
                 html += `</div></div>`;
 
                 let selectedIdx = -1;
-                setTimeout(() => {
+                // FIX H1: Use MutationObserver to bind click handlers AFTER popup renders
+                // setTimeout(100) fires before callGenericPopup creates DOM elements
+                const observer = new MutationObserver(() => {
                     const btns = document.querySelectorAll('.ac-tree-unlock-btn');
-                    btns.forEach(b => b.addEventListener('click', () => {
-                        // @ts-ignore
-                        btns.forEach(x => { x.style.borderColor = '#33ccff'; });
-                        // @ts-ignore
-                        b.style.borderColor = '#55ff66';
-                        selectedIdx = parseInt(b.getAttribute('data-idx'));
-                    }));
-                }, 100);
+                    if (btns.length > 0) {
+                        observer.disconnect();
+                        btns.forEach(b => b.addEventListener('click', () => {
+                            // @ts-ignore
+                            btns.forEach(x => { x.style.borderColor = '#33ccff'; });
+                            // @ts-ignore
+                            b.style.borderColor = '#55ff66';
+                            selectedIdx = parseInt(b.getAttribute('data-idx'));
+                        }));
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
 
                 const ok = await callGenericPopup(html, POPUP_TYPE.CONFIRM);
+                observer.disconnect(); // cleanup in case popup was dismissed before observer triggered
                 if (ok && selectedIdx !== -1) {
                     const chosen = treeTokens[selectedIdx];
                     this.data.addSkill(chosen.name, chosen.rank, chosen.desc, stat);
@@ -957,64 +1139,80 @@ class AzureCodexController {
                     const personaStr = pUser?.persona_description || String(ctx.chatMetadata?.user_persona || /** @type {any} */ (ctx).user_persona || '');
                     const charName = ctx.name2 || ctx.characterId || 'NPC';
 
+                    // Collect NPCs that need epithets (piggyback on this API call)
+                    const npcEntries = Object.values(this.data.bots || {}).filter(b => (b.appearances || 0) >= MIN_APPEARANCES);
+                    const npcListStr = npcEntries.length > 0
+                        ? `\n\nAlso, for each of these NPCs, provide a short Thai epithet/title (ฉายา):\n${npcEntries.map(b => `- ${b.nickname || b.name} (${[b.name, ...(b.aliases || [])].filter(Boolean).join(' / ')})`).join('\n')}\n\nIf the NPC is from a KNOWN franchise, use their REAL canonical epithet in Thai (e.g. Misaka Mikoto → "เรลกันแห่งโทคิวาได"). If OC, create a cool short Thai epithet.\nAdd "epithets" key to the JSON: {"epithets":{"NPC_NAME":"ฉายา",...}}`
+                        : '';
+
                     const prompt = `[System note: Evaluate the active Bot/Character "${charName}" and the User's Persona: "${personaStr}".
 Task: Determine the anime/franchise/universe this character belongs to (e.g. Naruto, Toaru Majutsu no Index, Attack on Titan, Demon Slayer, standard RPG, etc).
 Design a strict 6-stat RPG system that perfectly fits this universe's power scaling terminology.
 Output MUST be exactly valid JSON, no markdown formatting, no conversational text.
 
 Format exactly like this example for a standard RPG:
-{"levelName":"Level","levelDisplay":"1","expName":"EXP","statNames":["STR","AGI","VIT","INT","DEX","LUK"]}
+{"levelName":"Level","levelDisplay":"1","expName":"EXP","goldName":"Gold","statNames":["STR","AGI","VIT","INT","DEX","LUK"]}
 
 Example for Naruto:
-{"levelName":"Ninja Rank","levelDisplay":"Genin","expName":"Missions","statNames":["NIN","TAI","GEN","BUI","STR","SPD"]}
+{"levelName":"Ninja Rank","levelDisplay":"Genin","expName":"Missions","goldName":"Ryo","statNames":["NIN","TAI","GEN","BUI","STR","SPD"]}
 
-You must provide EXACTLY 6 short stat names in "statNames" (max 4 letters each). 
+You must provide EXACTLY 6 short stat names in "statNames" (max 4 letters each).${npcListStr}
 Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothing else!]`;
 
                     const reply = await generateQuietPrompt({ quietPrompt: prompt });
                     
                     try {
-                        // Robust JSON extraction: find the first {...} block that contains "statNames"
+                        // Robust JSON extraction: handle nested objects (epithets)
                         let uni = null;
-                        const jsonBlocks = reply.match(/\{[^{}]*"statNames"\s*:\s*\[[^\]]*\][^{}]*\}/g);
-                        if (jsonBlocks) {
-                            for (const block of jsonBlocks) {
-                                try {
-                                    const parsed = JSON.parse(block);
-                                    if (parsed && parsed.statNames && parsed.statNames.length === 6) {
-                                        uni = parsed;
-                                        break;
-                                    }
-                                } catch { /* try next block */ }
-                            }
+                        // First try: clean and parse the whole reply (handles nested objects like epithets)
+                        let cleanJson = reply.replace(/[\x60]{1,3}(json)?[\x60]*/gi, '').trim();
+                        const firstBrace = cleanJson.indexOf('{');
+                        const lastBrace = cleanJson.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace > firstBrace) {
+                            cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
                         }
-                        // Fallback: try cleaning and parsing the whole reply
-                        if (!uni) {
-                            let cleanJson = reply.replace(/[\x60]{1,3}(json)?[\x60]*/gi, '').trim();
-                            // Try to extract JSON between first { and last }
-                            const firstBrace = cleanJson.indexOf('{');
-                            const lastBrace = cleanJson.lastIndexOf('}');
-                            if (firstBrace !== -1 && lastBrace > firstBrace) {
-                                cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+                        try {
+                            const parsed = JSON.parse(cleanJson);
+                            if (parsed && parsed.statNames && parsed.statNames.length === 6) {
+                                uni = parsed;
                             }
-                            try {
-                                const parsed = JSON.parse(cleanJson);
-                                if (parsed && parsed.statNames && parsed.statNames.length === 6) {
-                                    uni = parsed;
+                        } catch { /* try block extraction */ }
+
+                        // Fallback: try extracting simple blocks without nested objects
+                        if (!uni) {
+                            const jsonBlocks = reply.match(/\{[^{}]*"statNames"\s*:\s*\[[^\]]*\][^{}]*\}/g);
+                            if (jsonBlocks) {
+                                for (const block of jsonBlocks) {
+                                    try {
+                                        const parsed = JSON.parse(block);
+                                        if (parsed && parsed.statNames && parsed.statNames.length === 6) {
+                                            uni = parsed;
+                                            break;
+                                        }
+                                    } catch { /* try next block */ }
                                 }
-                            } catch { /* fallthrough */ }
+                            }
                         }
                         
                         if (uni && uni.levelName && uni.statNames && uni.statNames.length === 6) {
                             const oldLevelNum = this.data.player.level || 1;
+                            const oldGold = this.data.player.gold || 0;
+                            const oldHp = this.data.player.hp;
+                            const oldHpMax = this.data.player.hpMax;
+                            const oldMp = this.data.player.mp;
+                            const oldMpMax = this.data.player.mpMax;
+                            const oldExp = this.data.player.exp;
+                            const oldExpMax = this.data.player.expMax;
                             
                             this.data.player.universe = {
                                 levelName: uni.levelName,
                                 levelDisplay: String(uni.levelDisplay || oldLevelNum),
                                 expName: uni.expName || 'EXP',
+                                goldName: uni.goldName || 'Gold',
                                 statNames: uni.statNames.map((/** @type {string} */ s) => s.toUpperCase().substring(0,4))
                             };
                             
+                            // Only remap stats if stat names actually changed
                             this.data.player.stats = {};
                             for (const s of this.data.player.universe.statNames) {
                                 this.data.player.stats[s] = 5;
@@ -1023,6 +1221,29 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                             this.data.player.skillTrees = {};
                             this.data.player.skills = [];
                             
+                            // Preserve progression data
+                            this.data.player.gold = oldGold;
+                            this.data.player.hp = oldHp;
+                            this.data.player.hpMax = oldHpMax;
+                            this.data.player.mp = oldMp;
+                            this.data.player.mpMax = oldMpMax;
+                            this.data.player.exp = oldExp;
+                            this.data.player.expMax = oldExpMax;
+                            
+                            // Apply NPC epithets from the same response (free, no extra API call)
+                            if (uni.epithets && typeof uni.epithets === 'object') {
+                                let epithetCount = 0;
+                                for (const [npcName, epithet] of Object.entries(uni.epithets)) {
+                                    if (typeof epithet !== 'string' || epithet.length < 2 || epithet.length > 60) continue;
+                                    const npcKey = this.data.getBotKey(npcName);
+                                    if (this.data.bots[npcKey]) {
+                                        this.data.bots[npcKey].dept = epithet;
+                                        epithetCount++;
+                                    }
+                                }
+                                if (epithetCount > 0) console.debug(LOG_PREFIX, `Assigned ${epithetCount} NPC epithet(s) via Sync Universe`);
+                            }
+
                             this.saveAndRender();
                             notify('success', `จูนจักรวาลสำเร็จ! ระบบพลังตอนนี้คือ: ${uni.levelName}`, '⚡ Universe Synced', { timeOut: 8000 });
                         } else {
@@ -1037,12 +1258,14 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                     console.error('Universe Sync error:', err);
                     notify('error', 'การเชื่อมต่อกับ AI ล้มเหลว', 'Failed');
                 } finally {
-                    if (btn) {
-                        btn.innerHTML = oldText;
+                    // FIX: Re-query button from DOM because saveAndRender() destroys the old one
+                    const freshBtn = document.querySelector('.sao-sync-universe-btn');
+                    if (freshBtn) {
+                        freshBtn.innerHTML = '🌐 Sync Universe';
                         // @ts-ignore
-                        btn.style.pointerEvents = 'auto';
+                        freshBtn.style.pointerEvents = 'auto';
                         // @ts-ignore
-                        btn.style.opacity = '1';
+                        freshBtn.style.opacity = '1';
                     }
                 }
             },
@@ -1085,7 +1308,10 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
 
                     const reply = await generateQuietPrompt({ quietPrompt: prompt });
                     
-                    const singleGainRx = /(?:Skill|สกิล|ทักษะ)[\s:：!\-]*\**([^\n*\[\](]+?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
+                    // FIX: Changed [^\n*\[\](] to [^\n*] so the regex can match
+                    // the expected format: Skill: Name (Rank X) [Req: Y STAT] - desc
+                    // The rank/req blocks are extracted and cleaned up by later code
+                    const singleGainRx = /(?:Skill|สกิล|ทักษะ)[\s:：!\-]*\**([^\n*]+?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
                     const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
                     // Updated Req Rx to match the first 3-4 chars of stat nicely
                     const reqRx = /(?:Req(?:uires?|uirement)?|ต้องการ|Require)[^\d]*(\d+)\s*([A-Za-z]{3,4})/i;
@@ -1101,6 +1327,8 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
 
                     while ((m = singleGainRx.exec(reply)) !== null) {
                         let rawName = m[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
+                        // FIX: Strip any leftover (Rank...) [Req...] blocks from name
+                        rawName = rawName.replace(/\s*\(Rank\s*[^)]*\)/gi, '').replace(/\s*\[Req[^\]]*\]/gi, '').trim();
                         let desc = (m[2] || '').trim();
                         
                         let reqVal = 10;
@@ -1162,12 +1390,14 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
                     console.error('Skill tree generation error:', err);
                     notify('error', 'การเชื่อมต่อกับ AI ล้มเหลว', 'Failed');
                 } finally {
-                    if (btn) {
-                        btn.innerHTML = oldText;
+                    // FIX: Re-query button from DOM because saveAndRender() destroys the old one
+                    const freshBtn = document.querySelector('.sao-skill-request-btn');
+                    if (freshBtn) {
+                        freshBtn.innerHTML = '✨ ขอผังทักษะ';
                         // @ts-ignore
-                        btn.style.pointerEvents = 'auto';
+                        freshBtn.style.pointerEvents = 'auto';
                         // @ts-ignore
-                        btn.style.opacity = '1';
+                        freshBtn.style.opacity = '1';
                     }
                 }
             },
@@ -1214,10 +1444,96 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         let changed = false;
         // FIX: Dedup names in the same message so appearances don't jump per message
         const uniqueDetected = [...new Set(detected)];
+
+        // FIX: Cross-language proximity merge — if Thai and Latin names appear
+        // near each other in the same message, they're likely the same character
+        // e.g. "**Mikoto** (มิโคโตะ)" or "**มิโคโตะ** หรือ **Mikoto**"
+        const isThai = (s) => /[\u0E00-\u0E7F]/.test(s);
+        const isLatin = (s) => /[A-Za-z]{2,}/.test(s);
+        for (let i = 0; i < uniqueDetected.length; i++) {
+            for (let j = i + 1; j < uniqueDetected.length; j++) {
+                const a = uniqueDetected[i], b = uniqueDetected[j];
+                // Only merge if one is Thai and the other is Latin
+                if (!((isThai(a) && isLatin(b)) || (isLatin(a) && isThai(b)))) continue;
+                // Check proximity in the original text
+                const posA = text.indexOf(a);
+                const posB = text.indexOf(b);
+                if (posA === -1 || posB === -1) continue;
+                if (Math.abs(posA - posB) > 150) continue;
+                // They're close together — merge, preferring Thai as the display name
+                const thaiName = isThai(a) ? a : (isThai(b) ? b : null);
+                const mainName = thaiName || (posA < posB ? a : b);
+                const aliasName = mainName === a ? b : a;
+                const mainKey = this.data.getBotKey(mainName);
+                if (this.data.bots[mainKey]) {
+                    if (!this.data.bots[mainKey].aliases.some(al => al.toLowerCase() === aliasName.toLowerCase())) {
+                        this.data.bots[mainKey].aliases.push(aliasName);
+                    }
+                    // Ensure Thai is the display nickname
+                    if (thaiName && this.data.bots[mainKey].nickname !== thaiName) {
+                        this.data.bots[mainKey].nickname = thaiName;
+                    }
+                    console.debug(LOG_PREFIX, `Auto-aliased "${aliasName}" → "${mainName}" (Thai preferred)`);
+                }
+                // Remove the alias from detection so it doesn't create a separate entry
+                uniqueDetected.splice(j, 1);
+                j--;
+            }
+        }
+
         for (const name of uniqueDetected) {
             const key = this.data.getBotKey(name);
+
+            // FIX: Cross-message NPC alias detection — before creating a NEW entry,
+            // check if any existing NPC name appears in this message near the new name.
+            // If one is Thai and the other is Latin, they're likely the same character.
             if (!this.data.bots[key]) {
-                this.data.bots[key] = { id: key, name, nickname: name, dept: 'Encountered', affection: 0, annoyance: 0, stage: 0, appearances: 0, aliases: [] };
+                const nameIsThai = /[\u0E00-\u0E7F]/.test(name);
+                const nameIsLatin = /[A-Za-z]{2,}/.test(name);
+                const namePos = text.indexOf(name);
+                let merged = false;
+
+                if ((nameIsThai || nameIsLatin) && namePos !== -1) {
+                    for (const [existingKey, existingBot] of Object.entries(this.data.bots)) {
+                        const allNames = [existingBot.name, existingBot.nickname, ...(existingBot.aliases || [])].filter(Boolean);
+                        for (const existing of allNames) {
+                            const existIsThai = /[\u0E00-\u0E7F]/.test(existing);
+                            const existIsLatin = /[A-Za-z]{2,}/.test(existing);
+                            // Only merge if cross-language (Thai<->Latin)
+                            if (!((nameIsThai && existIsLatin) || (nameIsLatin && existIsThai))) continue;
+                            // Check if the existing name appears in the same message text
+                            const existPos = text.indexOf(existing);
+                            if (existPos === -1) continue;
+                            // Within 200 chars of each other = likely referring to the same character
+                            if (Math.abs(namePos - existPos) <= 200) {
+                                if (!existingBot.aliases.some(a => a.toLowerCase() === name.toLowerCase())) {
+                                    existingBot.aliases.push(name);
+                                }
+                                // FIX: If the new name is Thai, promote it as the display nickname
+                                if (nameIsThai && !(/[\u0E00-\u0E7F]/.test(existingBot.nickname))) {
+                                    existingBot.nickname = name;
+                                }
+                                console.debug(LOG_PREFIX, `Cross-msg alias: "${name}" → "${existingBot.nickname}"`);
+                                existingBot.appearances = (existingBot.appearances || 0) + 1;
+                                changed = true;
+                                merged = true;
+                                break;
+                            }
+                        }
+                        if (merged) break;
+                    }
+                }
+                if (merged) continue;
+
+                const dept = '…'; // Temporary placeholder — will be replaced by AI epithet
+                this.data.bots[key] = { id: key, name, nickname: name, dept, affection: 0, annoyance: 0, stage: 0, appearances: 0, aliases: [] };
+            }
+            // FIX: If this name is Thai and the existing NPC has a non-Thai nickname, promote Thai
+            if (/[\u0E00-\u0E7F]/.test(name) && this.data.bots[key] && !(/[\u0E00-\u0E7F]/.test(this.data.bots[key].nickname))) {
+                this.data.bots[key].nickname = name;
+                if (!this.data.bots[key].aliases.some(a => a.toLowerCase() === this.data.bots[key].name.toLowerCase())) {
+                    this.data.bots[key].aliases.push(this.data.bots[key].name);
+                }
             }
             this.data.bots[key].appearances = (this.data.bots[key].appearances || 0) + 1;
             changed = true;
@@ -1228,6 +1544,81 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         if (changed && !isBulk) this.saveAndRender();
         if (promoted.length > 0 && !isBulk) {
             notify('info', `Main NPC: ${promoted.join(', ')}`, '✦ NPC Tracked', { timeOut: 4000 });
+            // NOTE: Epithets are assigned during Sync Universe (no extra API cost)
+            // User can also manually click GET EPITHET in NPC detail
+        }
+    }
+
+    /**
+     * AI-powered epithet assignment: sends one prompt for all newly promoted NPCs.
+     * Uses canonical franchise epithets for fandom characters, generates for OCs.
+     * fire-and-forget — doesn't block message processing.
+     */
+    async assignNpcEpithets(npcNames) {
+        try {
+            const ctx = getContext();
+            if (!ctx.characterId) return;
+            const charName = ctx.name2 || ctx.characterId || 'Character';
+            const universeName = this.data.player?.universe?.levelName || 'RPG';
+
+            const npcList = npcNames.map(n => {
+                const key = this.data.getBotKey(n);
+                const bot = this.data.bots[key];
+                const allNames = bot ? [bot.name, ...(bot.aliases || [])].filter(Boolean).join(' / ') : n;
+                return allNames;
+            }).join(', ');
+
+            const prompt = `[System note: The main character of this story is "${charName}".
+The following NPCs have appeared: ${npcList}
+
+Task: For EACH NPC, provide a short Thai epithet/title (ฉายา) that fits them.
+- If the NPC is from a KNOWN anime/manga/game franchise, use their REAL canonical epithet translated to Thai.
+  Example: Misaka Mikoto → "เรลกัน (Ace of Tokiwadai)", Naruto → "จิ้งจอกเก้าหาง", Levi → "ทหารที่แข็งแกร่งที่สุดของมนุษยชาติ"
+- If the NPC is an original character (OC) or unknown, create a short cool Thai epithet that fits their role/personality based on context.
+  Example: A mysterious merchant → "พ่อค้าเร้นลับ", A rival swordsman → "คมดาบแห่งเงา"
+
+Output MUST be exactly valid JSON. No markdown, no explanation.
+Format: {"epithets":{"NPC_NAME":"ฉายาภาษาไทย",...}}
+Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
+
+            const reply = await generateQuietPrompt({ quietPrompt: prompt });
+
+            // Parse response
+            let result = null;
+            try {
+                const jsonMatch = reply.match(/\{[^{}]*"epithets"\s*:\s*\{[^}]*\}[^{}]*\}/g);
+                if (jsonMatch) {
+                    for (const block of jsonMatch) {
+                        try { result = JSON.parse(block); break; } catch { /* next */ }
+                    }
+                }
+                if (!result) {
+                    let clean = reply.replace(/[\x60]{1,3}(json)?[\x60]*/gi, '').trim();
+                    const f = clean.indexOf('{'), l = clean.lastIndexOf('}');
+                    if (f !== -1 && l > f) {
+                        try { result = JSON.parse(clean.substring(f, l + 1)); } catch { /* fallthrough */ }
+                    }
+                }
+            } catch { /* parsing failed */ }
+
+            if (result?.epithets && typeof result.epithets === 'object') {
+                let updated = 0;
+                for (const [npcName, epithet] of Object.entries(result.epithets)) {
+                    if (typeof epithet !== 'string' || epithet.length < 2 || epithet.length > 60) continue;
+                    // Find the matching bot by trying all possible name matches
+                    const key = this.data.getBotKey(npcName);
+                    if (this.data.bots[key]) {
+                        this.data.bots[key].dept = epithet;
+                        updated++;
+                    }
+                }
+                if (updated > 0) {
+                    this.saveAndRender();
+                    console.debug(LOG_PREFIX, `Assigned ${updated} NPC epithet(s) via AI`);
+                }
+            }
+        } catch (err) {
+            console.debug(LOG_PREFIX, 'Epithet assignment skipped:', err);
         }
     }
 
@@ -1242,20 +1633,111 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         if (toRemove.length > 0) console.debug(LOG_PREFIX, `Cleaned up ${toRemove.length} minor NPCs`);
     }
 
-    // ── Player Stats Detection ──
+    // ── Player Stats Detection (with NPC proximity filter + sanity checks) ──
     detectPlayerStatsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetectStats || !text || this.data._isLoading) return;
-        const detected = this.detector.detect(text);
+
+        let playerName = '';
+        try { playerName = (getContext().name1 || '').trim(); } catch(e) {}
+
+        // ── Step 1: Try to isolate player-specific status block ──
+        let statusText = '';
+        let isStructured = false;
+
+        const statusBlockPatterns = [
+            /\[\s*(?:Status|สถานะ|Player\s*Status|สเตตัส|ステータス|พลัง|ค่าสถานะ)[^\]]*\]\s*([\s\S]*?)(?=\n\s*\n|\n\[|$)/gi,
+            /\*\*\s*(?:Status|สถานะ|Player\s*Status|สเตตัส|ค่าสถานะ)\s*\*\*\s*:?\s*([\s\S]*?)(?=\n\s*\n|$)/gi,
+        ];
+        if (playerName) {
+            const escaped = playerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            statusBlockPatterns.push(new RegExp(`\\*\\*\\s*${escaped}(?:'s)?\\s+(?:Status|สถานะ|Stats)\\s*\\*\\*\\s*:?\\s*([\\s\\S]*?)(?=\\n\\s*\\n|$)`, 'gi'));
+        }
+        for (const rx of statusBlockPatterns) {
+            let m;
+            while ((m = rx.exec(text)) !== null) {
+                statusText += m[1] + '\n';
+                isStructured = true;
+            }
+        }
+
+        // Priority 2: If no structured block found, use full text with sanity checks
+        const scanText = isStructured ? statusText : text;
+
+        const detected = this.detector.detect(scanText);
         const keys = Object.keys(detected);
         if (keys.length === 0) return;
+
+        // ── NPC proximity filter: skip stats near bolded NPC names (unstructured only) ──
+        let npcZones = [];
+        if (!isStructured) {
+            const boldRx = new RegExp(BOLD_RX_SRC, 'g');
+            let bm;
+            const pLower = playerName.toLowerCase();
+            while ((bm = boldRx.exec(text)) !== null) {
+                const nm = bm[1].trim().toLowerCase();
+                if (pLower && (nm === pLower || nm.includes(pLower) || pLower.includes(nm))) continue;
+                if (COMMON_WORDS.has(nm) || KNOWN_STATS.has(nm) || STAT_IGNORE_WORDS.has(nm)) continue;
+                npcZones.push({ start: bm.index, end: bm.index + bm[0].length + 250 });
+            }
+        }
 
         const p = this.data.player;
         let changed = false;
         const updates = [];
 
+        // FIX: Build dynamic keyword sets from universe config so custom names
+        // like 'Missions'(EXP), 'Ryo'(Gold), 'Ninja Rank'(Level) are recognized after Sync Universe
+        const levelAliases = new Set(['LV', 'LEVEL', 'เลเวล']);
+        const expAliases = new Set(['EXP', 'XP']);
+        const goldAliases = new Set(['GOLD', 'MONEY', 'COIN', 'COINS', 'ทอง', 'เงิน']);
+        if (p.universe?.levelName) {
+            levelAliases.add(p.universe.levelName.toUpperCase());
+            for (const word of p.universe.levelName.split(/\s+/)) {
+                if (word.length >= 2) levelAliases.add(word.toUpperCase());
+            }
+        }
+        if (p.universe?.expName) {
+            expAliases.add(p.universe.expName.toUpperCase());
+            for (const word of p.universe.expName.split(/\s+/)) {
+                if (word.length >= 2) expAliases.add(word.toUpperCase());
+            }
+        }
+        if (p.universe?.goldName) {
+            goldAliases.add(p.universe.goldName.toUpperCase());
+            for (const word of p.universe.goldName.split(/\s+/)) {
+                if (word.length >= 2) goldAliases.add(word.toUpperCase());
+            }
+        }
+
+        // FIX: Register custom stat names so StatDetector._isValid accepts them
+        this.detector.setDynamicStats([
+            ...levelAliases, ...expAliases, ...goldAliases,
+            ...(p.universe?.statNames || SAO_STATS)
+        ]);
+
         for (const name of keys) {
             const { value, max, isDelta } = detected[name];
             const upper = name.toUpperCase();
+
+            // ── NPC proximity check: skip stats appearing right after NPC names ──
+            if (!isStructured && npcZones.length > 0) {
+                const sRx = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[:：]\\s*[+-]?\\d', 'i');
+                const sm = sRx.exec(text);
+                if (sm && npcZones.some(z => sm.index >= z.start && sm.index <= z.end)) continue;
+            }
+
+            // ── Sanity checks for unstructured/absolute values ──
+            if (!isStructured && !isDelta) {
+                if (levelAliases.has(upper)) {
+                    if (Math.abs(value - (p.level || 1)) > 10) continue;
+                }
+                if ((this.data.player.universe?.statNames || SAO_STATS).includes(upper)) {
+                    if (value > 200) continue;
+                }
+                if (goldAliases.has(upper)) {
+                    if (p.gold > 100 && value > p.gold * 50) continue;
+                }
+            }
 
             // Helper to compute final stat from absolute or delta value
             const applyVal = (current, val, maxVal) => {
@@ -1271,29 +1753,31 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
                 if (max != null && p.mpMax !== max) { p.mpMax = max; changed = true; }
                 const v = applyVal(p.mp, value, p.mpMax);
                 if (p.mp !== v) { p.mp = v; changed = true; updates.push(`MP: ${v}`); }
-            } else if (['EXP', 'XP'].includes(upper)) {
+            } else if (expAliases.has(upper)) {
                 if (max != null && p.expMax !== max) { p.expMax = max; changed = true; }
                 const v = applyVal(p.exp, value, p.expMax);
                 if (p.exp !== v) { p.exp = v; changed = true; updates.push(`EXP: ${v}`); }
-            } else if (['LV', 'LEVEL', 'เลเวล'].includes(upper)) {
-                // levels don't usually use delta, but if they do:
+            } else if (levelAliases.has(upper)) {
                 const newLv = applyVal(p.level, value, null);
                 if (newLv > p.level) {
                     const gained = this.data.levelUp(newLv);
                     changed = true;
+                    // Keep levelDisplay in sync with numeric level
+                    if (p.universe) p.universe.levelDisplay = String(newLv);
                     updates.push(`Level Up! Lv.${newLv} (+${gained} pts)`);
                     if (!isBulk) notify('success', `Level ${newLv}! +${gained} stat points!`, '⭐ LEVEL UP!', { timeOut: 5000 });
                 } else if (newLv !== p.level && !isDelta) {
-                    p.level = newLv; changed = true; updates.push(`Lv.${newLv}`);
+                    p.level = newLv;
+                    if (p.universe) p.universe.levelDisplay = String(newLv);
+                    changed = true; updates.push(`Lv.${newLv}`);
                 }
-            } else if (['GOLD','MONEY','COIN','COINS','ทอง','เงิน'].includes(upper)) {
+            } else if (goldAliases.has(upper)) {
                 const v = applyVal(p.gold, value, null);
                 if (p.gold !== v) { p.gold = v; changed = true; updates.push(`Gold: ${v}`); }
             } else if ((this.data.player.universe?.statNames || SAO_STATS).includes(upper)) {
                 const v = applyVal(p.stats[upper] || 0, value, null);
                 if (p.stats[upper] !== v) { p.stats[upper] = v; changed = true; updates.push(`${upper}: ${v}`); }
             } else if (['ATK','ATTACK','พลังโจมตี','ค่าโจมตี'].includes(upper)) {
-                // Map ATK aliases to the first stat in the universe
                 const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[0];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
@@ -1410,30 +1894,43 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         
         let changed = false;
 
-        // 1. Auto-detect item usage/consumption based on existing inventory items using heuristic NLP verbs
+        // 1. Auto-detect item usage/consumption — ONLY when player is the subject
         if (!isBulk) {
             const lowerText = text.toLowerCase();
+            let playerName = '';
+            try { playerName = (getContext().name1 || '').trim().toLowerCase(); } catch(e) {}
+            
             for (const item of [...this.data.inventory]) {
-                if (item.name.length <= 2) continue; // too short, skip heuristic
+                if (item.name.length <= 2) continue;
                 
-                // Escape item name for regex safety
                 const safeName = item.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').toLowerCase();
                 
-                // Match "eats the Apple", "used Potion", "ดื่ม ยา", "ใช้ ดาบ"
-                const rx = new RegExp(`(?:\\b(?:use|uses|using|eat|eats|eating|drink|drinks|drinking|consume|consumes|drop|drops|throw|throws)\\b|(?:ใช้|กิน|ยัด|เท|หัก|ปา|ทิ้ง|หยิบ|ขว้าง|สวมใส่))\\s*(?:the\\s+|a\\s+|an\\s+)?(?:[a-zก-๙]+\\s+){0,2}${safeName}(?!\\w)`, 'i');
+                // Player-directed patterns only: "you use X", "*uses X*", "คุณใช้ X", "Player uses X"
+                const playerPatterns = [
+                    // English: "you use/eat/drink X"
+                    new RegExp(`(?:you|your|player)\\s+(?:use|eat|drink|consume|drop|throw)[s]?\\s+(?:the\\s+|a\\s+)?${safeName}`, 'i'),
+                    // Roleplay action: "*uses X*", "*eats X*"
+                    new RegExp(`\\*[^*]*(?:use|eat|drink|consume|drop|throw)[s]?\\s+(?:the\\s+|a\\s+)?${safeName}[^*]*\\*`, 'i'),
+                    // Thai: "คุณใช้ X", "ใช้ X ของตัวเอง"
+                    new RegExp(`(?:คุณ|ตัวละคร|เจ้า)\\s*(?:ใช้|กิน|ดื่ม|ทิ้ง|ปา|ขว้าง)\\s*${safeName}`, 'i'),
+                ];
+                if (playerName) {
+                    const escapedPlayer = playerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    playerPatterns.push(new RegExp(`${escapedPlayer}\\s+(?:use|eat|drink|ใช้|กิน|ดื่ม)[s]?\\s+(?:the\\s+)?${safeName}`, 'i'));
+                }
                 
-                if (rx.test(lowerText)) {
-                    // Prevent dropping equipment/weaponry heavily if they just "use" it (unless explicitly dropped)
-                    if (/(?:sword|blade|shield|armor|gun|bow|ring|necklace|ดาบ|โล่|เกราะ|อาวุธ|ปืน|ธนู|แหวน|สร้อย)/i.test(item.name)) {
-                        if (!/(?:drop|drops|throw|throws|ทิ้ง|ถอด)/i.test(lowerText)) continue;
-                    }
+                const isPlayerAction = playerPatterns.some(rx => rx.test(lowerText));
+                if (!isPlayerAction) continue;
+                
+                // Equipment guard
+                if (/(?:sword|blade|shield|armor|gun|bow|ring|necklace|ดาบ|โล่|เกราะ|อาวุธ|ปืน|ธนู|แหวน|สร้อย)/i.test(item.name)) {
+                    if (!/(?:drop|drops|throw|throws|ทิ้ง|ถอด)/i.test(lowerText)) continue;
+                }
 
-                    // Auto decrement
-                    const ok = this.data.removeItem(item.name, 1);
-                    if (ok) {
-                        changed = true;
-                        notify('info', `[ฉากบรรยาย]: ${item.name}`, '✨ Auto Item Used', { timeOut: 4500 });
-                    }
+                const ok = this.data.removeItem(item.name, 1);
+                if (ok) {
+                    changed = true;
+                    notify('info', `[ฉากบรรยาย]: ${item.name}`, '✨ Auto Item Used', { timeOut: 4500 });
                 }
             }
         }
@@ -1447,6 +1944,11 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
             let clean = nameRaw.replace(/[*_~`"'「」『』""'']/g, '').trim();
             if (!clean) return;
             
+            // FIX: Reject HTML tags and markdown artifacts immediately
+            if (/<[^>]+>/.test(clean)) return;
+            clean = clean.replace(/<[^>]*>/g, '').trim();
+            if (!clean || clean.length < 2) return;
+            
             let qty = 1;
             const qtyMatch = clean.match(/\s*[x×]\s*(\d+)$/i);
             if (qtyMatch) {
@@ -1458,19 +1960,39 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
             const lower = clean.toLowerCase();
             if (NOT_ITEMS.has(lower)) return;
             if (/^\d+$/.test(clean) || /^\d+\s*\/\s*\d+$/.test(clean)) return;
-            // FIX: Filters for currency strings pretending to be items, e.g. "50 gold", "ทอง 100 เหรียญ"
-            if (/^(?:ทอง|เงิน|เหรียญ|gold|money|coins?|exp|xp|hp|mp|sp|lv|level|เลเวล|พลังชีวิต|พลังเวทย์)$/i.test(lower)) return;
-            if (/^[\d\s,.]*(?:ทอง|เงิน|เหรียญ|gold|money|coins?|exp|xp)[\d\s,.]*$/i.test(lower)) return;
-            if (/(?:gold|coins?|ทอง|เงิน|เหรียญ)/i.test(lower) && /\d/.test(lower)) return;
+
+            // FIX: Comprehensive money/currency detection — convert to gold instead of creating items
+            const goldName = (this.data.player?.universe?.goldName || 'Gold').toLowerCase();
+            const moneyTerms = `gold|money|coins?|currency|ทอง|เงิน|เหรียญ|ตังค์|ตัง|สตางค์|บาท|กระเป๋าตัง|กระเป๋าเงิน|wallet|purse|ryo|jewel|berry|berries|yen|${goldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
+            const moneyRx = new RegExp(`(\\d+)\\s*(?:${moneyTerms})`, 'i');
+            const moneyRx2 = new RegExp(`(?:${moneyTerms})\\s*(\\d+)`, 'i');
+            const pureMoneyRx = new RegExp(`^(?:${moneyTerms})$`, 'i');
+            const moneyMatch = clean.match(moneyRx) || clean.match(moneyRx2);
+            if (moneyMatch && !isLoss) {
+                // Convert money item to gold gain
+                const goldAmt = parseInt(moneyMatch[1]);
+                if (goldAmt > 0 && goldAmt < 100000) {
+                    this.data.player.gold = (this.data.player.gold || 0) + goldAmt;
+                    gains.push(`+${goldAmt} ${this.data.player?.universe?.goldName || 'Gold'}`);
+                    changed = true;
+                }
+                return;
+            }
+            // Also reject pure money words and money-containing strings
+            if (pureMoneyRx.test(lower)) return;
+            if (new RegExp(`(?:${moneyTerms})`, 'i').test(lower) && /\d/.test(lower)) return;
+            if (/^[\d\s,.]*(?:ทอง|เงิน|เหรียญ|ตังค์|ตัง|gold|money|coins?)[\d\s,.]*$/i.test(lower)) return;
             if (/^(?:ทอง|เงิน|เหรียญ|gold|coins?|\s)+$/i.test(lower)) return;
             if (/(?:skill|สกิล|status|สเตตัส|stat|exp|xp|^level\b|\blv\b)/i.test(lower) && !/book|ตำรา|หนังสือ/i.test(lower)) return;
 
+            // FIX: Reject common Thai trigger/verb words that aren't items
+            if (/^(ได้รับ|เก็บได้|พบ|หยิบ|ซื้อ|คว้ามา|รับ|ไม่มีชื่อ|ไม่ระบุ|ไม่ทราบ|unknown|unnamed|no name|none|null)$/i.test(lower)) return;
             // FIX: Skip common verbs/phrases that aren't items
-            if (/^(a |the |an |some |any |to |is |it |that |this |was |were |been |has |have |had )/i.test(clean)) return;
+            if (/^(a |the |an |some |any |to |is |it |that |this |was |were |been |has |have |had |she |he |they |her |his |their )/i.test(clean)) return;
             // FIX: Reject all-punctuation or all-symbol strings that survived cleanup
             if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(clean)) return;
-            // FIX: Reject strings that are common RPG verbs captured by accident
-            if (/^(ได้รับ|เก็บได้|พบ|หยิบ|ซื้อ|คว้ามา|รับ|obtained?|receive[ds]?|got|found|reward|loot|earn|buy|bought|pick|acquire[ds]?)$/i.test(clean)) return;
+            // FIX: Reject common narrative phrases / verb fragments
+            if (/^.{0,5}(said|felt|looked|seemed|wanted|tried|began|started|decided|noticed|wondered|realized|thought|knew|heard)\b/i.test(clean)) return;
             const dedupKey = `${isLoss ? 'L' : 'G'}:${lower}`;
             if (seen.has(dedupKey)) return;
             seen.add(dedupKey);
@@ -1484,16 +2006,17 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
             changed = true;
         };
 
-        // FIX: Tighter patterns and rely on regex trim for robust qty
+        // FIX: Require line-start or bracket context for item gain/loss detection
+        // prevent mid-sentence narrative from triggering false positives
         const gainRx = [
-            /(?:ได้รับ(?:ไอเท็ม)?|เก็บได้|พบ|หยิบ|ซื้อ|คว้ามา|รับ)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\]。]|\n|\r|$)/gim,
-            /(?:obtain(?:ed)?|receive[ds]?|got|found|pick(?:ed)?\s*up|bought|loot(?:ed)?|acquire[ds]?|reward(?:ed)?|earned)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\].]|\n|\r|$)/gim,
+            /(?:^|[\n\r\[|•►])\s*(?:ได้รับ(?:ไอเท็ม)?|เก็บได้|พบ|หยิบ|ซื้อ|คว้ามา|รับ)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\]。]|\n|\r|$)/gim,
+            /(?:^|[\n\r\[|•►])\s*(?:obtain(?:ed)?|receive[ds]?|got|found|pick(?:ed)?\s*up|bought|loot(?:ed)?|acquire[ds]?|reward(?:ed)?|earned)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\].]|\n|\r|$)/gim,
             /\[\s*(?:ได้รับ(?:ไอเท็ม)?|item\s*(?:obtained|received|found)?|loot|reward)\s*[:：]?\s*([^\]\n]+?)\s*\]/gim,
         ];
 
         const lossRx = [
-            /(?:เสีย|สูญเสีย|ถูกขโมย|ทิ้ง|ขาย|ใช้)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\]。]|\n|\r|$)/gim,
-            /(?:lost|used|consumed|sold|broke[n]?|destroyed|dropped|spent|discarded)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\].]|\n|\r|$)/gim,
+            /(?:^|[\n\r\[|•►])\s*(?:เสีย|สูญเสีย|ถูกขโมย|ทิ้ง|ขาย|ใช้)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\]。]|\n|\r|$)/gim,
+            /(?:^|[\n\r\[|•►])\s*(?:lost|used|consumed|sold|broke[n]?|destroyed|dropped|spent|discarded)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\].]|\n|\r|$)/gim,
             /\[\s*(?:เสีย|สูญเสีย|lost|used|consumed)\s*[:：]?\s*([^\]\n]+?)\s*\]/gim,
         ];
 
@@ -1515,21 +2038,25 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         }
     }
 
-    // ── Status Effect / Condition Detection ──
+    // ── Status Effect / Condition Detection (structured format required) ──
     detectConditionsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading || isBulk) return;
-        
+
+        // Only detect conditions from STRUCTURED formats or player-directed contexts
+        // Prevents false positives from narrative like "frozen in thought" or "burning desire"
         const conditionPatterns = [
-            // [regex, condition name, effect description]
-            [/(?:poisoned|ถูกพิษ|ได้รับพิษ|วางยาพิษ|poison(?:ed)?)/i, 'Poisoned', 'ลด HP ทุกเทิร์น (-5% HP)'],
-            [/(?:stunned|สตัน|มึนงง|ช็อก|stun(?:ned)?)/i, 'Stunned', 'ไม่สามารถขยับได้ 1 เทิร์น'],
-            [/(?:burn(?:ing|ed|t)?|ถูกไฟเผา|ลุกเป็นไฟ|ไหม้|เพลิง)/i, 'Burning', 'ได้รับความเสียหายจากไฟ'],
-            [/(?:frozen|แช่แข็ง|ถูกน้ำแข็ง|ถูกแช่แข็ง|freeze|froze)/i, 'Frozen', 'ไม่สามารถเคลื่อนไหวได้'],
-            [/(?:paralyz(?:ed|e)|เป็นอัมพาต|อัมพฤกษ์|ชา)/i, 'Paralyzed', 'ความเร็วลดลง 50%'],
-            [/(?:bless(?:ed|ing)?|ได้รับพร|อวยพร|บัฟ|buff(?:ed)?)/i, 'Blessed', 'พลังโจมตีเพิ่ม 20%'],
-            [/(?:weaken(?:ed)?|อ่อนแอ|ถูกทำให้อ่อนแอ|debuff(?:ed)?)/i, 'Weakened', 'สเตตัสทั้งหมดลด 20%'],
-            [/(?:blind(?:ed)?|ตาบอด|มองไม่เห็น)/i, 'Blinded', 'ความแม่นยำลดลงอย่างมาก'],
-            [/(?:heal(?:ed)?|รักษา|ฟื้นฟู|หายดี|cure[ds]?|recovered)/i, '_RECOVERY_', ''],
+            // [structured regex, condition name, effect]
+            // Structured: [Poisoned], [Status: Poisoned], *ถูกพิษ*, Status Effect: Poisoned
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Poisoned\s*\]|\*\s*(?:ถูกพิษ|ได้รับพิษ|วางยาพิษ)\s*\*|(?:you(?:'re| are| got| have been| were)\s+poisoned)|(?:คุณ|ตัวละคร|เจ้า)(?:ถูกพิษ|ได้รับพิษ))/i, 'Poisoned', 'ลด HP ทุกเทิร์น (-5% HP)'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Stunned\s*\]|\*\s*(?:สตัน|มึนงง|ช็อก)\s*\*|(?:you(?:'re| are| got| have been| were)\s+stunned)|(?:คุณ|ตัวละคร|เจ้า)(?:ถูก(?:สตัน|ช็อก)|มึนงง))/i, 'Stunned', 'ไม่สามารถขยับได้ 1 เทิร์น'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Burn(?:ing|ed|t)?\s*\]|\*\s*(?:ถูกไฟเผา|ลุกเป็นไฟ)\s*\*|(?:you(?:'re| are| got| have been| were)\s+(?:burn(?:ing|ed|t)))|(?:คุณ|ตัวละคร|เจ้า)(?:ถูกไฟเผา|ลุกเป็นไฟ))/i, 'Burning', 'ได้รับความเสียหายจากไฟ'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Frozen\s*\]|\*\s*(?:แช่แข็ง|ถูกน้ำแข็ง|ถูกแช่แข็ง)\s*\*|(?:you(?:'re| are| got| have been| were)\s+frozen)|(?:คุณ|ตัวละคร|เจ้า)(?:ถูกแช่แข็ง|ถูกน้ำแข็ง))/i, 'Frozen', 'ไม่สามารถเคลื่อนไหวได้'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Paralyz(?:ed|e)\s*\]|\*\s*(?:เป็นอัมพาต|อัมพฤกษ์)\s*\*|(?:you(?:'re| are| got| have been| were)\s+paralyz(?:ed|e))|(?:คุณ|ตัวละคร|เจ้า)(?:เป็นอัมพาต))/i, 'Paralyzed', 'ความเร็วลดลง 50%'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Bless(?:ed|ing)?\s*\]|\*\s*(?:ได้รับพร|อวยพร)\s*\*|(?:you(?:'re| are| got| have been| were)\s+bless(?:ed|ing))|(?:คุณ|ตัวละคร|เจ้า)(?:ได้รับพร))/i, 'Blessed', 'พลังโจมตีเพิ่ม 20%'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Weaken(?:ed)?\s*\]|\*\s*(?:อ่อนแอ|ถูกทำให้อ่อนแอ)\s*\*|(?:you(?:'re| are| got| have been| were)\s+weaken(?:ed))|(?:คุณ|ตัวละคร|เจ้า)(?:อ่อนแอ|ถูกทำให้อ่อนแอ))/i, 'Weakened', 'สเตตัสทั้งหมดลด 20%'],
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?Blind(?:ed)?\s*\]|\*\s*(?:ตาบอด|มองไม่เห็น)\s*\*|(?:you(?:'re| are| got| have been| were)\s+blind(?:ed))|(?:คุณ|ตัวละคร|เจ้า)(?:ตาบอด|มองไม่เห็น))/i, 'Blinded', 'ความแม่นยำลดลงอย่างมาก'],
+            // Recovery: also requires structured or player-directed
+            [/(?:\[\s*(?:Status\s*[:：]\s*)?(?:Cured|Healed|Recovered)\s*\]|\*\s*(?:รักษา|ฟื้นฟู|หายดี)\s*\*|(?:you(?:'re| are| got| have been| were)\s+(?:healed|cured|recovered))|(?:คุณ|ตัวละคร|เจ้า)(?:ถูกรักษา|หายดี|ฟื้นฟู))/i, '_RECOVERY_', ''],
         ];
         
         let changed = false;
@@ -1539,7 +2066,6 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         for (const [rx, name, effect] of conditionPatterns) {
             if (rx.test(text)) {
                 if (name === '_RECOVERY_') {
-                    // Recovery removes negative conditions
                     const negatives = ['Poisoned', 'Stunned', 'Burning', 'Frozen', 'Paralyzed', 'Weakened', 'Blinded'];
                     const before = p.conditions.length;
                     p.conditions = p.conditions.filter(c => !negatives.includes(c.name));
@@ -1548,7 +2074,6 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
                         notify('success', 'สถานะผิดปกติถูกรักษาหายแล้ว!', '💚 Conditions Cleared', { timeOut: 3000 });
                     }
                 } else {
-                    // Don't add duplicates
                     if (!p.conditions.find(c => c.name === name)) {
                         p.conditions.push({ name, turnsLeft: 3, effect });
                         changed = true;
@@ -1576,52 +2101,62 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         if (changed) this.saveAndRender();
     }
 
-    // ── NPC Mood Detection (Sentiment Analysis) ──
+    // ── NPC Mood Detection (Proximity-Aware Sentiment Analysis) ──
     detectNPCMoodFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading || isBulk) return;
         if (Object.keys(this.data.bots).length === 0) return;
         
-        const angryWords = /(?:โกรธ|เกลียด|รำคาญ|หงุดหงิด|ขู่|ตะคอก|กรีดร้อง|ฆ่า|ทำลาย|angry|furious|hate|annoyed|yell|scream|glare|disgusted|irritated|hostile|enraged|threaten|snarl)/gi;
-        const happyWords = /(?:ยิ้ม|หัวเราะ|รัก|ชอบ|ดีใจ|ขอบคุณ|สนิท|กอด|จูบ|smile|laugh|love|like|happy|thank|hug|kiss|blush|giggle|gentle|kind|trust|warm|fondly|affection)/gi;
+        const angryWords = /(?:โกรธ|เกลียด|รำคาญ|หงุดหงิด|ขู่|ตะคอก|กรีดร้อง|ทำลาย|angry|furious|hate|annoyed|yell|scream|glare|disgusted|irritated|hostile|enraged|threaten|snarl)/gi;
+        const happyWords = /(?:ยิ้ม|หัวเราะ|รัก|ชอบ|ดีใจ|ขอบคุณ|สนิท|กอด|จูบ|smile|laugh|love|happy|thank|hug|kiss|blush|giggle|gentle|kind|trust|warm|fondly|affection)/gi;
         
-        const angryCount = (text.match(angryWords) || []).length;
-        const happyCount = (text.match(happyWords) || []).length;
-        
-        if (angryCount === 0 && happyCount === 0) return;
-        
-        // Find which NPC is mentioned in this message
+        // Find NPC mentions with their positions in text
         const boldRx = new RegExp(BOLD_RX_SRC, 'g');
         let bm;
-        const mentionedNpcs = new Set();
+        const npcMentions = []; // {key, pos}
         while ((bm = boldRx.exec(text)) !== null) {
             const key = this.data.getBotKey(bm[1].trim());
-            if (this.data.bots[key]) mentionedNpcs.add(key);
+            if (this.data.bots[key]) npcMentions.push({ key, pos: bm.index });
+        }
+        if (npcMentions.length === 0) return;
+        
+        // Count sentiment keywords NEAR each NPC mention (within 200 chars)
+        let changed = false;
+        const delta = 1; // Reduced from 2 to 1 for subtler changes
+        const maxPerMessage = 2; // Cap total change per NPC per message
+        const npcDeltas = new Map(); // key -> {aff, ann}
+        
+        for (const mention of npcMentions) {
+            const nearby = text.substring(Math.max(0, mention.pos - 50), Math.min(text.length, mention.pos + 200));
+            const angryCount = (nearby.match(angryWords) || []).length;
+            const happyCount = (nearby.match(happyWords) || []).length;
+            
+            if (angryCount === 0 && happyCount === 0) continue;
+            
+            if (!npcDeltas.has(mention.key)) npcDeltas.set(mention.key, { aff: 0, ann: 0 });
+            const d = npcDeltas.get(mention.key);
+            
+            if (angryCount > happyCount) {
+                d.ann = Math.min(d.ann + delta, maxPerMessage);
+            } else if (happyCount > angryCount) {
+                d.aff = Math.min(d.aff + delta, maxPerMessage);
+            }
         }
         
-        if (mentionedNpcs.size === 0) return;
-        
-        let changed = false;
-        const delta = 2; // Subtle nudge per message
-        
-        for (const npcKey of mentionedNpcs) {
+        for (const [npcKey, d] of npcDeltas) {
             const bot = this.data.bots[npcKey];
             if (!bot) continue;
             
-            if (angryCount > happyCount) {
-                const newAnn = Math.min(100, bot.annoyance + delta);
-                if (newAnn !== bot.annoyance) {
-                    bot.annoyance = newAnn;
-                    bot.stage = DataEngine.calcStage(bot.affection, bot.annoyance);
-                    changed = true;
-                }
-            } else if (happyCount > angryCount) {
-                const newAff = Math.min(100, bot.affection + delta);
-                if (newAff !== bot.affection) {
-                    bot.affection = newAff;
-                    bot.stage = DataEngine.calcStage(bot.affection, bot.annoyance);
-                    changed = true;
-                }
+            // FIX H2: Use per-NPC flag so stage is only recalculated for NPCs that actually changed
+            let npcChanged = false;
+            if (d.ann > 0) {
+                const newAnn = Math.min(100, bot.annoyance + d.ann);
+                if (newAnn !== bot.annoyance) { bot.annoyance = newAnn; changed = true; npcChanged = true; }
             }
+            if (d.aff > 0) {
+                const newAff = Math.min(100, bot.affection + d.aff);
+                if (newAff !== bot.affection) { bot.affection = newAff; changed = true; npcChanged = true; }
+            }
+            if (npcChanged) bot.stage = DataEngine.calcStage(bot.affection, bot.annoyance);
         }
         
         if (changed) this.saveAndRender();
@@ -1629,6 +2164,8 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
 
     // FIX: Split live vs bulk processing to prevent accumulation bugs
     processMessageLive(text) {
+        // Guard: skip all detection if extension is disabled
+        if (extension_settings[META_KEY]?.enabled === false) return;
         this.detectNPCsFromMessage(text);
         this.detectPlayerStatsFromMessage(text);
         this.detectRelationshipFromMessage(text);
@@ -1644,6 +2181,103 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         this.detectSkillsFromMessage(text, true);
     }
 
+    // ── Sync data from Persona description ──
+    syncFromPersona() {
+        try {
+            let personaStr = '';
+            const pUser = /** @type {any} */ (window).power_user;
+            if (pUser && pUser.persona_description) {
+                personaStr = pUser.persona_description;
+            } else {
+                personaStr = String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
+            }
+            if (!personaStr || personaStr.length < 10) return;
+            
+            // Detect skills from persona (bulk mode — no notifications)
+            this.detectSkillsFromMessage(personaStr, true);
+            
+            // Additional persona-specific skill extraction:
+            // Handles formats like "พลังพิเศษ: X, Y, Z" or inline "สกิลพิเศษ — X, Y"
+            const personaSkillHeaders = [
+                /(?:พลังพิเศษ|สกิลพิเศษ|ความถนัด|จุดเด่น|ความสามารถพิเศษ|พลังวิเศษ|เวทมนตร์|อาวุธ|เทคนิคพิเศษ|ท่าไม้ตาย|Unique Skills?|Special (?:Abilities?|Powers?|Skills?)|Techniques?|Ultimate|Powers?)\s*[:：\-—]+\s*([^\n]+)/gi,
+                /(?:Skills?|Abilities?|Powers?)\s*[:：]\s*([^\n]{5,200})/gi,
+            ];
+            for (const rx of personaSkillHeaders) {
+                let pm;
+                while ((pm = rx.exec(personaStr)) !== null) {
+                    const skillLine = pm[1].trim();
+                    // Split by comma, |, /, or 、
+                    const parts = skillLine.split(/[,|/、]+/);
+                    for (const part of parts) {
+                        let sName = part.trim()
+                            .replace(/\([^)]*\)/g, '')  // remove parenthetical notes
+                            .replace(/\[[^\]]*\]/g, '') // remove bracket notes
+                            .replace(/\*+/g, '')
+                            .trim();
+                        if (sName.length >= 2 && sName.length <= 50) {
+                            // Extract rank if present inline
+                            const rm = sName.match(/(?:Rank|Lv|ระดับ)\s*([A-Z0-9]+)/i);
+                            const rank = rm ? rm[1].toUpperCase() : '?';
+                            if (rm) sName = sName.replace(rm[0], '').trim();
+                            if (sName.length >= 2) {
+                                if (this.data.addSkill(sName, rank, '', '')) {
+                                    console.debug(LOG_PREFIX, `Persona skill extracted: ${sName}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Also detect baseline stats from persona (only applies if stats are still at default 5)
+            const detected = this.detector.detect(personaStr);
+            const p = this.data.player;
+            let changed = false;
+            for (const [name, { value }] of Object.entries(detected)) {
+                const upper = name.toUpperCase();
+                const statNames = this.data.player.universe?.statNames || SAO_STATS;
+                if (statNames.includes(upper)) {
+                    if (p.stats[upper] === 5 && value > 0 && value <= 200) {
+                        p.stats[upper] = Math.floor(value);
+                        changed = true;
+                    }
+                }
+                if (['LV', 'LEVEL', '\u0e40\u0e25\u0e40\u0e27\u0e25'].includes(upper) && value > 0 && value <= 999) {
+                    if (p.level === 1) {
+                        this.data.levelUp(Math.floor(value));
+                        changed = true;
+                    }
+                }
+                if (['HP', '\u0e1e\u0e25\u0e31\u0e07\u0e0a\u0e35\u0e27\u0e34\u0e15', 'HEALTH'].includes(upper) && value > 0) {
+                    if (p.hp === p.hpMax && p.hpMax === BASE_HP + 5 * HP_PER_VIT) {
+                        p.hpMax = Math.floor(value);
+                        p.hp = p.hpMax;
+                        changed = true;
+                    }
+                }
+                if (['MP', 'MANA', '\u0e1e\u0e25\u0e31\u0e07\u0e40\u0e27\u0e17\u0e22\u0e4c'].includes(upper) && value > 0) {
+                    if (p.mp === p.mpMax && p.mpMax === BASE_MP + 5 * MP_PER_INT) {
+                        p.mpMax = Math.floor(value);
+                        p.mp = p.mpMax;
+                        changed = true;
+                    }
+                }
+                if (['GOLD', 'MONEY', '\u0e17\u0e2d\u0e07', '\u0e40\u0e07\u0e34\u0e19'].includes(upper) && value > 0) {
+                    if (p.gold === 0) {
+                        p.gold = Math.floor(value);
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                this.data.recalcDerived();
+                console.debug(LOG_PREFIX, 'Persona sync applied baseline stats');
+            }
+        } catch(e) {
+            console.debug(LOG_PREFIX, 'Persona sync error:', e);
+        }
+    }
+
     detectSkillsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
         let changed = false;
@@ -1651,15 +2285,22 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ|Lv|Level)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
 
         // 1. Core Action: "Skill Learned: Fireball - Description"
-        const singleGainRx = /(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained|Gain)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่|ความสามารถใหม่)[\s:：!\-]*\**([^\n*\[\](]{2,50}?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
+        // FIX: Require line-start context (^|\n|[|•|>) before skill keywords
+        // This prevents mid-sentence narrative like "เธอแสดงสกิลใหม่ที่..." from false-triggering
+        const singleGainRx = /(?:^|[\n\r\[|•►▸>])\s*(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained|Gain)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่|ความสามารถใหม่)[\s:：!\-]+\**([^\n*]{2,80}?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
         
         let m;
         while ((m = singleGainRx.exec(text)) !== null) {
             let rawName = m[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
+            // FIX: Strip any leftover (Rank...) [Req...] blocks from name
+            rawName = rawName.replace(/\s*\(Rank\s*[^)]*\)/gi, '').replace(/\s*\[Req[^\]]*\]/gi, '').trim();
             if (rawName.length < 2 || rawName.length > 50) continue;
             // Reject junk: all-punctuation, digits, or matching the keyword itself
             if (/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(rawName)) continue;
             if (/^(skill|สกิล|ทักษะ|new|learned|unlocked|acquired|obtained|gain|rank|desc|none|null)$/i.test(rawName)) continue;
+            // FIX: Reject common narrative phrases that aren't real skill names
+            if (/^(the |a |an |she |he |they |her |his |their |it |its |that |this )/i.test(rawName)) continue;
+            if (/^.{0,5}(said|felt|was|were|had|got|saw|knew|began|looked|seemed|wanted)\b/i.test(rawName)) continue;
 
             let desc = (m[2] || '').trim();
             
@@ -1699,12 +2340,12 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
             }
         }
 
-        // 2. Persona Block list: "Skills:\n- Fireball: Shoots fire"
-        const listHeaderRx = /(?:\[?Skills?\]?|Active Skills|Passive Skills|ความสามารถ|สกิล|ทักษะ)[\]\s]*[:：]?\s*\n((?:[\s*]*[-•*]\s*[^\n]+\n?)+)/gi;
+        // 2. Persona Block list: "Skills:\n- Fireball: Shoots fire" (supports brackets, numbered lists, unicode bullets)
+        const listHeaderRx = /\[?\s*(?:Skills?|Active\s+Skills?|Passive\s+Skills?|Abilities|ความสามารถ|สกิล|ทักษะ|สกิลติดตัว|ทักษะติดตัว|ความสามารถพิเศษ|能力|スキル)\s*\]?\s*[:：]?\s*\n((?:[\s*]*[-•*●◆◇■▸►✦✧❖\d]+[.)\]:]?\s*[^\n]+\n?)+)/gi;
         let mList;
         while ((mList = listHeaderRx.exec(text)) !== null) {
             const listBlock = mList[1];
-            const itemRx = /[-•*]\s*\**([^\n*:(]{2,50}?)\**\s*(?:[-:：(]\s*([^\n]{5,150}))?/gi;
+            const itemRx = /[-•*●◆◇■▸►✦✧❖\d]+[.)\]:]?\s*\**([^\n*:(]{2,50}?)\**\s*(?:[-:：(]\s*([^\n]{5,150}))?/gi;
             let mItem;
             while ((mItem = itemRx.exec(listBlock)) !== null) {
                 let sName = mItem[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
@@ -1733,7 +2374,7 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         }
         
         // 3. Flat comma list fallback for Persona: "Skills: Fireball, Heal, Slash"
-        const commaListRx = /(?:\[?Skills?\]?|ความสามารถ|สกิล|ทักษะ)[\]\s]*[:：]\s*([a-zA-Zก-๙\s,]+)(?:\n|$)/gi;
+        const commaListRx = /\[?\s*(?:Skills?|Abilities|ความสามารถ|สกิล|ทักษะ|สกิลติดตัว|能力|スキル)\s*\]?\s*[:：]\s*([a-zA-Z\u0E00-\u0E7F\u3000-\u9FFF\s,、]+)(?:\n|$)/gi;
         let mComma;
         while ((mComma = commaListRx.exec(text)) !== null) {
             const skillsStr = mComma[1];
@@ -1784,20 +2425,25 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         let newDept = bot.dept;
         let newAlias = (bot.aliases || []).join(', ');
 
-        setTimeout(() => {
-            document.getElementById('ac-edit-nickname')?.addEventListener('input', e => newNick = /** @type {HTMLInputElement} */ (e.target).value);
-            document.getElementById('ac-edit-dept')?.addEventListener('input', e => newDept = /** @type {HTMLInputElement} */ (e.target).value);
-            document.getElementById('ac-edit-aliases')?.addEventListener('input', e => newAlias = /** @type {HTMLInputElement} */ (e.target).value);
-
-            document.getElementById('ac-edit-affection')?.addEventListener('input', e => {
-                newAff = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
-                const v = document.getElementById('ac-edit-aff-val'); if (v) v.textContent = String(newAff);
-            });
-            document.getElementById('ac-edit-annoyance')?.addEventListener('input', e => {
-                newAnn = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
-                const v = document.getElementById('ac-edit-ann-val'); if (v) v.textContent = String(newAnn);
-            });
-        }, 100);
+        // FIX: Use MutationObserver instead of setTimeout for reliable popup event binding
+        const editorObserver = new MutationObserver(() => {
+            const nickEl = document.getElementById('ac-edit-nickname');
+            if (nickEl) {
+                editorObserver.disconnect();
+                nickEl.addEventListener('input', e => newNick = /** @type {HTMLInputElement} */ (e.target).value);
+                document.getElementById('ac-edit-dept')?.addEventListener('input', e => newDept = /** @type {HTMLInputElement} */ (e.target).value);
+                document.getElementById('ac-edit-aliases')?.addEventListener('input', e => newAlias = /** @type {HTMLInputElement} */ (e.target).value);
+                document.getElementById('ac-edit-affection')?.addEventListener('input', e => {
+                    newAff = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
+                    const v = document.getElementById('ac-edit-aff-val'); if (v) v.textContent = String(newAff);
+                });
+                document.getElementById('ac-edit-annoyance')?.addEventListener('input', e => {
+                    newAnn = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
+                    const v = document.getElementById('ac-edit-ann-val'); if (v) v.textContent = String(newAnn);
+                });
+            }
+        });
+        editorObserver.observe(document.body, { childList: true, subtree: true });
 
         const ok = await callGenericPopup(html, POPUP_TYPE.CONFIRM);
         if (!ok) return;
@@ -1846,9 +2492,13 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         root.innerHTML = `
         <div class="ac-wrapper">
             <div class="ac-header">
-                <div class="ac-header-left"><div class="ac-title">Azure Codex</div><div class="ac-subtitle">NPC & Player Tracker · System Active</div></div>
+                <div class="ac-header-left"><div class="ac-title">Azure Codex</div><div class="ac-subtitle" id="ac-status-text">NPC & Player Tracker · System Active</div></div>
                 <div class="ac-header-right">
                     <div class="ac-heartbeat"><svg width="120" height="20" viewBox="0 0 120 20"><polyline points="0,10 10,10 15,3 20,17 25,10 30,10 35,10 38,5 41,15 44,10 54,10 59,3 64,17 69,10 79,10 84,5 87,15 90,10 100,10 105,3 110,17 115,10 120,10" fill="none" stroke="#003366" stroke-width="1.2"/><polyline points="0,10 10,10 15,3 20,17 25,10 30,10 35,10 38,5 41,15 44,10 54,10 59,3 64,17 69,10 79,10 84,5 87,15 90,10 100,10 105,3 110,17 115,10 120,10" fill="none" stroke="#1e90ff" stroke-width="0.6" opacity="0.5"/></svg></div>
+                    <div class="ac-toggle-wrap">
+                        <span class="ac-toggle-label on" id="ac-toggle-label">ON</span>
+                        <div class="ac-toggle active" id="ac-toggle" title="Enable/Disable Extension"></div>
+                    </div>
                     <button class="ac-close-btn" id="ac-close-btn">CLOSE</button>
                 </div>
             </div>
@@ -1865,11 +2515,46 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         btn.addEventListener('click', () => root.classList.toggle('show-overlay'));
         document.getElementById('ac-close-btn')?.addEventListener('click', () => root.classList.remove('show-overlay'));
         document.getElementById('ac-reset-btn')?.addEventListener('click', () => this.confirmReset());
+
+        // Enable/Disable toggle
+        const toggle = document.getElementById('ac-toggle');
+        toggle?.addEventListener('click', () => {
+            const settings = extension_settings[META_KEY];
+            settings.enabled = !settings.enabled;
+            this._updateToggleUI();
+            saveSettingsDebounced();
+        });
+        this._updateToggleUI();
+
         this.updateFloatBtn();
         this.ui.render();
     }
 
     toggleOverlay() { document.getElementById('azure-codex-root')?.classList.toggle('show-overlay'); }
+
+    _updateToggleUI() {
+        const enabled = extension_settings[META_KEY]?.enabled !== false;
+        const toggle = document.getElementById('ac-toggle');
+        const label = document.getElementById('ac-toggle-label');
+        const subtitle = document.getElementById('ac-status-text');
+        const root = document.getElementById('azure-codex-root');
+        if (toggle) {
+            toggle.classList.toggle('active', enabled);
+        }
+        if (label) {
+            label.textContent = enabled ? 'ON' : 'OFF';
+            label.className = `ac-toggle-label ${enabled ? 'on' : 'off'}`;
+        }
+        if (subtitle) {
+            subtitle.textContent = enabled
+                ? 'NPC & Player Tracker · System Active'
+                : 'NPC & Player Tracker · ⏸ Paused';
+        }
+        if (root) {
+            root.classList.toggle('ac-disabled', !enabled);
+        }
+    }
+
     updateFloatBtn() { const b = document.getElementById('azure-codex-float-btn'); if (b) b.style.display = extension_settings[META_KEY]?.showFloatBtn !== false ? '' : 'none'; }
 
     // ── Settings ──
@@ -1990,44 +2675,62 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
         eventSource.on(event_types.CHAT_CHANGED, () => {
             this.data.load(); this.ui.activeTab = 'all'; this.ui.selectedNpc = null; this.ui.render();
             this.lastProcessedIdx = -1;
+            this._personaSynced = false;
+            this._lastMsgTimestamp = 0; // debounce guard
+
             setTimeout(() => {
+                this._isBulkScanning = true;
+                const t0 = performance.now();
                 try {
                     const chat = getContext().chat;
-                    if (!Array.isArray(chat)) return;
-                    
-                    this.lastProcessedIdx = chat.length - 1;
+                    if (!Array.isArray(chat)) { this._isBulkScanning = false; return; }
 
-                    // Automatically sync skills from the player's Persona globally
+                    // ── 1. Sync persona FIRST so inject prompt has data for turn 1 ──
                     try {
-                        let personaStr = '';
-                        const pUser = /** @type {any} */ (window).power_user;
-                        if (pUser && pUser.persona_description) {
-                            personaStr = pUser.persona_description;
-                        } else {
-                            personaStr = String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
-                        }
-                        if (personaStr) this.detectSkillsFromMessage(personaStr, true);
-                    } catch(e) {}
+                        this.syncFromPersona();
+                        this._personaSynced = true;
+                    } catch (e) {
+                        console.warn(LOG_PREFIX, 'Persona sync error (non-fatal):', e);
+                    }
 
-                    // BUG FIX: Zero out appearances before recounting to prevent unbounded accumulation
+                    // ── 2. Zero appearances → recount from history ──
                     for (const bot of Object.values(this.data.bots)) {
                         bot.appearances = 0;
                     }
 
-                    // FIX: Use bulk processing (NPC + stats only, no inventory/relationship)
+                    // ── 3. Bulk scan: NPCs + skills only ──
+                    let scanned = 0;
                     for (const msg of chat) {
-                        if (!msg.is_user && !msg.is_system && msg.mes) this.processMessageBulk(msg.mes);
+                        if (!msg.is_user && !msg.is_system && msg.mes) {
+                            this.processMessageBulk(msg.mes);
+                            scanned++;
+                        }
                     }
+
+                    // ── 4. Cleanup + finalize ──
                     this.cleanupMinorNPCs();
+                    this.lastProcessedIdx = chat.length - 1;
+                    this.data.backup();
                     this.saveAndRender();
 
-                    // Auto Sync Universe: if universe is still default SAO, trigger background sync
+                    console.debug(LOG_PREFIX, `Bulk scan: ${scanned} msgs in ${(performance.now() - t0).toFixed(0)}ms`);
+
+                    // ── 5. Auto Sync Universe (first time only) ──
                     try {
+                        const meta = getContext().chatMetadata?.[META_KEY];
+                        const alreadySynced = meta?._universeSynced;
                         const currentStatNames = this.data.player.universe?.statNames;
                         const isDefault = !currentStatNames || JSON.stringify(currentStatNames) === JSON.stringify(['STR','AGI','VIT','INT','DEX','LUK']);
-                        if (isDefault && getContext().characterId) {
-                            console.debug(LOG_PREFIX, 'Auto-syncing universe for new character...');
-                            // Small delay to avoid race conditions with chat loading
+                        const hasExistingData = this.data.player.skills.length > 0 ||
+                            Object.values(this.data.player.stats).some(v => v !== 5);
+
+                        if (isDefault && !alreadySynced && !hasExistingData && getContext().characterId) {
+                            console.debug(LOG_PREFIX, 'Auto-syncing universe for new character (first time only)...');
+                            if (getContext().chatMetadata) {
+                                if (!getContext().chatMetadata[META_KEY]) getContext().chatMetadata[META_KEY] = {};
+                                getContext().chatMetadata[META_KEY]._universeSynced = true;
+                                saveMetadataDebounced();
+                            }
                             setTimeout(() => {
                                 try {
                                     const syncBtn = document.querySelector('.sao-sync-universe-btn');
@@ -2037,33 +2740,65 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
                         }
                     } catch(e) {}
                 } catch (err) { console.warn(LOG_PREFIX, 'Scan error:', err); }
+                finally { this._isBulkScanning = false; }
             }, 500);
         });
 
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (idx) => {
             try {
+                // Guard: skip if disabled or during bulk scan
+                if (extension_settings[META_KEY]?.enabled === false) return;
+                if (this._isBulkScanning) return;
+
                 const msg = getContext().chat?.[idx];
-                if (!msg || msg.is_user || msg.is_system) return;
+                if (!msg || msg.is_user || msg.is_system || !msg.mes) return;
+
+                // Debounce: skip if same message processed within 200ms (prevents double-fire)
+                const now = Date.now();
+                if (idx === this.lastProcessedIdx && (now - this._lastMsgTimestamp) < 200) return;
+                this._lastMsgTimestamp = now;
 
                 if (idx === this.lastProcessedIdx) {
                     this.data.restore();
                 } else if (idx > this.lastProcessedIdx) {
                     this.data.backup();
                 } else {
-                    return; // Ignore older messages to prevent double-applying
+                    return;
                 }
 
-                // Live messages get full processing
+                // Re-sync persona on first message if not already done
+                if (!this._personaSynced) {
+                    try {
+                        this.syncFromPersona();
+                        this._personaSynced = true;
+                    } catch(e) { console.debug(LOG_PREFIX, 'Persona sync skipped:', e); }
+                }
+
                 this.processMessageLive(msg.mes);
                 this.lastProcessedIdx = idx;
             } catch (err) { console.warn(LOG_PREFIX, 'Message error:', err); }
         });
 
         eventSource.on(event_types.MESSAGE_DELETED, (idx) => {
-            if (idx === this.lastProcessedIdx) {
-                this.data.restore();
-                this.lastProcessedIdx = idx - 1;
-                this.saveAndRender();
+            if (idx <= this.lastProcessedIdx) {
+                this._isBulkScanning = true;
+                try {
+                    this.data.save();
+                    this.data.load();
+                    const chat = getContext().chat;
+                    if (Array.isArray(chat)) {
+                        try { this.syncFromPersona(); } catch(e) {}
+                        for (const bot of Object.values(this.data.bots)) bot.appearances = 0;
+                        for (const msg of chat) {
+                            if (!msg.is_user && !msg.is_system && msg.mes) this.processMessageBulk(msg.mes);
+                        }
+                        this.cleanupMinorNPCs();
+                        this.lastProcessedIdx = chat.length - 1;
+                        this.data.backup();
+                        this.saveAndRender();
+                    }
+                } catch(e) { console.warn(LOG_PREFIX, 'Delete rescan error:', e); }
+                finally { this._isBulkScanning = false; }
             }
         });
     }

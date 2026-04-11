@@ -1,54 +1,158 @@
 /* ============================================
-   Azure Codex – NPC Tracker
+   Azure Codex – NPC & Player Tracker
    SillyTavern Extension Styles
+   ★ Premium UI with Responsive + Glassmorphism
    ============================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Cinzel:wght@400;600&family=Sarabun:wght@300;400&display=swap');
 
-/* ── Floating Button ── */
+/* ═══════════════════════════════════════════
+   KEYFRAME ANIMATIONS
+   ═══════════════════════════════════════════ */
+
+@keyframes ac-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes ac-border-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes ac-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ac-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes ac-glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(30,144,255,.2), inset 0 0 8px rgba(30,144,255,.05); }
+  50% { box-shadow: 0 0 20px rgba(30,144,255,.4), inset 0 0 15px rgba(30,144,255,.1); }
+}
+@keyframes ac-halo-rotate {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+@keyframes sao-pulse {
+  0%, 100% { border-color: rgba(255,215,0,.2); box-shadow: none; }
+  50% { border-color: rgba(255,215,0,.5); box-shadow: 0 0 12px rgba(255,215,0,.15); }
+}
+@keyframes ac-debuff-pulse {
+  0%, 100% { opacity: .8; }
+  50% { opacity: 1; box-shadow: 0 0 8px rgba(239,83,80,.3); }
+}
+@keyframes ac-float-glow {
+  0%, 100% { box-shadow: 0 4px 15px rgba(0,0,0,.6), 0 0 20px rgba(30,144,255,.15); }
+  50% { box-shadow: 0 4px 20px rgba(0,0,0,.8), 0 0 35px rgba(30,144,255,.35); }
+}
+@keyframes ac-particle-drift {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  20% { opacity: .4; }
+  80% { opacity: .2; }
+  100% { transform: translateY(-100vh) translateX(40px); opacity: 0; }
+}
+@keyframes ac-route-pulse {
+  0% { box-shadow: 0 0 5px rgba(30,144,255,0.4); opacity: 0.8; }
+  50% { box-shadow: 0 0 15px rgba(51,204,255,0.9); opacity: 1; border-color: var(--blush); }
+  100% { box-shadow: 0 0 5px rgba(30,144,255,0.4); opacity: 0.8; }
+}
+@keyframes ac-tab-glow {
+  0%, 100% { opacity: .6; }
+  50% { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════
+   CSS VARIABLES (Design Tokens)
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root {
+  --ink: #01040a;
+  --ink2: #040a14;
+  --ink3: #071224;
+  --crim: #002244;
+  --rose: #1e90ff;
+  --blush: #33ccff;
+  --gold: #6ab8e8;
+  --gold2: #8ce0ff;
+  --ash: #121e2d;
+  --ash2: #182a3d;
+  --tx: #a8c4d4;
+  --tx2: #5a7a92;
+  --tx3: #365064;
+  --petal: #d0e6f0;
+  --glass: rgba(4, 10, 20, .82);
+  --glass-border: rgba(30, 144, 255, .12);
+}
+
+/* ═══════════════════════════════════════════
+   FLOATING BUTTON
+   ═══════════════════════════════════════════ */
+
 #azure-codex-float-btn {
-  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
-  background: #040a14; color: #6ab8e8;
-  border: 1px solid #182a3d; padding: 12px 20px;
-  border-radius: 30px; font-family: 'Cinzel', serif; font-size: 0.8rem;
-  letter-spacing: 0.1em; cursor: pointer;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.8); transition: all 0.3s ease;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  background: linear-gradient(135deg, #040a14 0%, #071224 100%);
+  color: #6ab8e8;
+  border: 1px solid rgba(30,144,255,.3);
+  padding: 12px 22px;
+  border-radius: 30px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 15px rgba(0,0,0,.6), 0 0 20px rgba(30,144,255,.15);
+  transition: all 0.3s cubic-bezier(.4,0,.2,1);
+  animation: ac-float-glow 3s ease-in-out infinite;
 }
 #azure-codex-float-btn:hover {
-  background: #071224; border-color: #1e90ff; color: #d0e6f0;
-  box-shadow: 0 5px 20px rgba(30,144,255,0.4);
+  background: linear-gradient(135deg, #071224 0%, #0a1a32 100%);
+  border-color: rgba(51,204,255,.5);
+  color: #d0e6f0;
+  box-shadow: 0 6px 25px rgba(0,0,0,.8), 0 0 40px rgba(30,144,255,.4);
+  transform: translateY(-2px);
+}
+#azure-codex-float-btn:active {
+  transform: translateY(0);
 }
 
-/* ── Main Root Overlay ── */
-#azure-codex-root {
-  --ink:#01040a;--ink2:#040a14;--ink3:#071224;
-  --crim:#002244;--rose:#1e90ff;--blush:#33ccff;
-  --gold:#6ab8e8;--gold2:#8ce0ff;
-  --ash:#121e2d;--ash2:#182a3d;
-  --tx:#a8c4d4;--tx2:#5a7a92;--tx3:#365064;
-  --petal:#d0e6f0;
+/* ═══════════════════════════════════════════
+   MAIN OVERLAY — GLASSMORPHISM
+   ═══════════════════════════════════════════ */
 
-  font-family:'Sarabun',serif;
-  background:var(--ink);
-  border:1px solid var(--ash2);
-  border-top:none;
-  border-radius:2px;
+#azure-codex-root {
+  font-family: 'Sarabun', serif;
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-top: none;
+  border-radius: 12px;
 
   position: fixed;
   bottom: 80px;
   right: 20px;
   z-index: 9998;
   width: calc(100vw - 40px);
-  max-width: 480px;
+  max-width: 620px;
   margin: 0;
-  overflow:hidden;
-  box-shadow:0 0 0 1px #01040a,0 30px 80px rgba(0,20,40,.95),0 0 120px rgba(30,144,255,.1);
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(1,4,10,.8),
+    0 25px 60px rgba(0,10,30,.9),
+    0 0 80px rgba(30,144,255,.08),
+    inset 0 1px 0 rgba(106,184,232,.06);
 
   opacity: 0;
   pointer-events: none;
-  transform: translateY(20px) scale(0.95);
+  transform: translateY(20px) scale(0.96);
   transform-origin: bottom right;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 #azure-codex-root.show-overlay {
   opacity: 1;
@@ -56,526 +160,948 @@
   transform: translateY(0) scale(1);
 }
 
+/* ── Animated Top Border ── */
 #azure-codex-root::before {
-  content:'';display:block;height:3px;
-  background:linear-gradient(90deg,
-    transparent 0%,#182a3d 5%,
-    #002244 20%,#1e90ff 35%,
-    #6ab8e8 50%,
-    #1e90ff 65%,#002244 80%,
-    #182a3d 95%,transparent 100%);
+  content: '';
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%, #182a3d 10%,
+    #002244 25%, #1e90ff 40%,
+    #33ccff 50%,
+    #1e90ff 60%, #002244 75%,
+    #182a3d 90%, transparent 100%);
+  background-size: 200% 100%;
+  animation: ac-border-flow 4s linear infinite;
 }
 
-/* ── Header ── */
-#azure-codex-root .ac-header {
-  display:flex;align-items:center;justify-content:space-between;
-  padding:.7rem 1.2rem;
-  background:linear-gradient(180deg,#06101c 0%,#02060c 100%);
-  border-bottom:1px solid var(--ash2);
-  position:relative;z-index:2;
-}
-#azure-codex-root .ac-header-left{display:flex;flex-direction:column;gap:.15rem}
-#azure-codex-root .ac-title {
-  font-family:'Cinzel',serif;
-  font-size:.8rem;letter-spacing:.3em;color:var(--gold);
-  text-transform:uppercase;
-  text-shadow: 0 0 8px rgba(106,184,232,0.3);
-}
-#azure-codex-root .ac-subtitle {
-  font-family:'Cormorant Garamond',serif;
-  font-size:.7rem;font-style:italic;color:var(--tx2);
-  letter-spacing:.1em;
-}
-#azure-codex-root .ac-header-right{display:flex;align-items:center;gap:.6rem}
-#azure-codex-root .ac-heartbeat {
-  width:60px;height:20px;overflow:hidden;opacity:.6;
-}
-#azure-codex-root .ac-heartbeat svg{animation:ac-scroll 2s linear infinite;}
-@keyframes ac-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-
-#azure-codex-root .ac-close-btn {
-  display:flex;align-items:center;gap:.35rem;cursor:pointer;
-  font-family:'Cinzel',serif;font-size:.5rem;
-  letter-spacing:.15em;color:var(--tx2);
-  border:1px solid var(--ash2);padding:.25rem .5rem;
-  transition:border-color .3s,color .3s;
-  background:transparent;
-}
-#azure-codex-root .ac-close-btn:hover{border-color:var(--rose);color:var(--tx); box-shadow: 0 0 8px rgba(30,144,255,.2);}
-
-/* ── Body / Scrollable ── */
-#azure-codex-root .ac-body {
-  max-height: calc(100vh - 220px); overflow-y:auto; overflow-x:hidden;
-  transition:max-height .5s cubic-bezier(.4,0,.2,1);
-}
-#azure-codex-root .ac-body::-webkit-scrollbar { width: 4px; }
-#azure-codex-root .ac-body::-webkit-scrollbar-track { background: var(--ink); }
-#azure-codex-root .ac-body::-webkit-scrollbar-thumb { background: var(--ash2); border-radius: 4px; }
-#azure-codex-root .ac-body::-webkit-scrollbar-thumb:hover { background: var(--rose); }
-
-/* ── Tabs ── */
-#azure-codex-root .ac-tabs {
-  display:flex;
-  background:var(--ink2);
-  border-bottom:1px solid var(--ash2);
-  position:relative;
-  overflow-x:auto;
-}
-#azure-codex-root .ac-tabs::-webkit-scrollbar{height:2px;}
-#azure-codex-root .ac-tabs::-webkit-scrollbar-thumb{background:var(--ash);}
-#azure-codex-root .ac-tabs::after {
-  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--ash2),transparent);
-}
-#azure-codex-root .ac-tab {
-  flex:1;padding:.55rem .2rem;text-align:center;
-  font-family:'Cinzel',serif;font-size:.52rem;
-  letter-spacing:.1em;color:var(--tx3);cursor:pointer;
-  border-right:1px solid var(--ash);border:none;background:transparent;
-  transition:all .25s;white-space:nowrap;
-  position:relative;
-  min-width: 80px;
-}
-#azure-codex-root .ac-tab:last-child{border-right:none}
-#azure-codex-root .ac-tab:hover{color:var(--tx);background:rgba(30,144,255,.05)}
-#azure-codex-root .ac-tab.active {
-  color:var(--gold);
-  background:linear-gradient(180deg,rgba(30,144,255,.15),transparent);
-}
-#azure-codex-root .ac-tab.active::after {
-  content:'';position:absolute;bottom:0;left:15%;right:15%;height:1px;
-  background:linear-gradient(90deg,transparent,var(--gold),transparent);
-}
-
-/* ── Panel ── */
-#azure-codex-root .ac-panel{display:none; animation: ac-fade-in .3s ease;}
-#azure-codex-root .ac-panel.active{display:block}
-@keyframes ac-fade-in { from{opacity:0;} to{opacity:1;} }
-
-/* ── Grid overview (ALL view) ── */
-#azure-codex-root .ac-grid {
-  display:grid;grid-template-columns:1fr 1fr;
-  gap:1px;background:var(--ash);padding:0;
-}
-
-/* ── Card (in ALL view) ── */
-#azure-codex-root .ac-card {
-  background:var(--ink2);
-  padding:.8rem 1rem;
-  position:relative;overflow:hidden;cursor:pointer;
-  border-left:2px solid transparent;
-  transition:background .2s,border-color .2s;
-}
-#azure-codex-root .ac-card::before {
-  content:'';position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--ash),transparent);
-}
-#azure-codex-root .ac-card:hover{background:var(--ink3);}
-#azure-codex-root .ac-card.active{background:var(--ink3);border-left-color:var(--rose);}
-
-#azure-codex-root .ac-card-name {
-  font-family:'Cinzel',serif;font-size:.9rem;
-  color:var(--petal);letter-spacing:.08em;margin-bottom:.05rem;
-}
-#azure-codex-root .ac-card-dept {
-  font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-size:.65rem;color:var(--tx2);margin-bottom:.55rem;
-  letter-spacing:.05em;
-}
-#azure-codex-root .ac-card-divider {
-  display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;
-}
-#azure-codex-root .ac-card-divider::before, #azure-codex-root .ac-card-divider::after {
-  content:'';flex:1;height:1px;
-  background:linear-gradient(90deg,transparent,var(--ash2));
-}
-#azure-codex-root .ac-card-divider::after{background:linear-gradient(270deg,transparent,var(--ash2))}
-#azure-codex-root .ac-card-divider span{font-size:.5rem;color:var(--tx3);letter-spacing:.05em;}
-
-/* ── Gauge bars ── */
-#azure-codex-root .ac-gauge{display:flex;align-items:center;gap:.4rem;margin-bottom:.28rem}
-#azure-codex-root .ac-gauge-label {
-  font-family:'Cinzel',serif;font-size:.44rem;
-  color:var(--tx2);letter-spacing:.1em;width:2.8rem;flex-shrink:0;
-}
-#azure-codex-root .ac-gauge-track {
-  flex:1;height:5px;
-  background:rgba(255,255,255,.03);
-  border:1px solid var(--ash);
-  border-radius:0;overflow:hidden;position:relative;
-}
-#azure-codex-root .ac-gauge-fill{height:100%;position:relative;transition:width .6s cubic-bezier(.4,0,.2,1);}
-#azure-codex-root .ac-gauge-fill.lk {
-  background:linear-gradient(90deg,#002244,var(--rose));
-  box-shadow:0 0 8px rgba(30,144,255,.5),inset 0 0 8px rgba(255,255,255,.05);
-}
-#azure-codex-root .ac-gauge-fill.an {
-  background:linear-gradient(90deg,#102022,var(--gold));
-  box-shadow:0 0 6px rgba(106,184,232,.4),inset 0 0 6px rgba(255,255,255,.05);
-}
-#azure-codex-root .ac-gauge-val {
-  font-family:'Cormorant Garamond',serif;font-size:.65rem;
-  width:1.6rem;text-align:right;flex-shrink:0;
-}
-#azure-codex-root .ac-gauge-val.lk{color:var(--blush); text-shadow:0 0 5px rgba(51,204,255,.4);}
-#azure-codex-root .ac-gauge-val.an{color:var(--gold2);}
-
-/* ── Detail panel ── */
-#azure-codex-root .ac-detail{padding:1rem 1.2rem;}
-#azure-codex-root .ac-detail-head {
-  text-align:center;margin-bottom:1rem;padding-bottom:.8rem;
-  border-bottom:1px solid var(--ash2);position:relative;
-}
-#azure-codex-root .ac-detail-head::before, #azure-codex-root .ac-detail-head::after {
-  content:'✦';position:absolute;bottom:-0.55rem;
-  font-size:.6rem;color:var(--gold);opacity:.6;
-}
-#azure-codex-root .ac-detail-head::before{left:calc(50% - 60px)}
-#azure-codex-root .ac-detail-head::after{right:calc(50% - 60px)}
-#azure-codex-root .ac-detail-name {
-  font-family:'Cinzel',serif;font-size:1.1rem;
-  color:var(--petal);letter-spacing:.15em;
-  display:block;margin-bottom:.15rem;
-  text-shadow: 0 0 10px rgba(30,144,255, 0.2);
-}
-#azure-codex-root .ac-detail-nick {
-  font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-size:.75rem;color:var(--tx2);letter-spacing:.1em;
-}
-#azure-codex-root .ac-detail-dept {
-  font-family:'Cinzel',serif;font-size:.5rem;
-  color:var(--tx3);letter-spacing:.2em;margin-top:.3rem;
-  text-transform:uppercase;
-}
-
-/* ── 3-stat boxes ── */
-#azure-codex-root .ac-stats3 {display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.9rem;}
-#azure-codex-root .ac-stat-box {
-  text-align:center;
-  background:var(--ink2);
-  border:1px solid var(--ash2);
-  padding:.5rem .3rem;position:relative;overflow:hidden;
-}
-#azure-codex-root .ac-stat-box::before {
-  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
-}
-#azure-codex-root .ac-stat-box.lk::before{background:linear-gradient(90deg,transparent,var(--rose),transparent)}
-#azure-codex-root .ac-stat-box.an::before{background:linear-gradient(90deg,transparent,var(--gold),transparent)}
-#azure-codex-root .ac-stat-box.st::before{background:linear-gradient(90deg,transparent,var(--ash2),transparent)}
-#azure-codex-root .ac-stat-val {
-  font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:300;
-  display:block;margin-bottom:.1rem;line-height:1;
-}
-#azure-codex-root .ac-stat-val.lk{color:var(--blush);text-shadow:0 0 20px rgba(30,144,255,.5);}
-#azure-codex-root .ac-stat-val.an{color:var(--gold2);}
-#azure-codex-root .ac-stat-val.st{font-size:.7rem;font-family:'Cinzel',serif;color:var(--tx);letter-spacing:.05em;margin-top:.15rem;text-transform:uppercase;}
-#azure-codex-root .ac-stat-label{font-family:'Cinzel',serif;font-size:.42rem;color:var(--tx3);letter-spacing:.15em;}
-
-/* ── Route pips ── */
-#azure-codex-root .ac-pips-wrap{margin-bottom:.9rem;}
-#azure-codex-root .ac-pips-head {
-  font-family:'Cinzel',serif;font-size:.48rem;color:var(--tx2);
-  letter-spacing:.12em;margin-bottom:.35rem;
-  display:flex;justify-content:space-between;align-items:center;
-}
-#azure-codex-root .ac-pips-head span:last-child{color:var(--gold);font-size:.55rem; text-shadow:0 0 5px rgba(106,184,232,.4);}
-#azure-codex-root .ac-pips{display:flex;gap:4px;justify-content:center;}
-
-@keyframes ac-route-pulse {
-  0% { box-shadow: 0 0 5px rgba(30,144,255,0.4); opacity: 0.8; }
-  50% { box-shadow: 0 0 15px rgba(51,204,255,0.9); opacity: 1; border-color: var(--blush); }
-  100% { box-shadow: 0 0 5px rgba(30,144,255,0.4); opacity: 0.8; }
-}
-#azure-codex-root .ac-pip {
-  width:28px;height:6px;
-  background:rgba(255,255,255,.02);
-  border:1px solid var(--ash);
-  position:relative;overflow:hidden;
-  clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
-  transition: all 0.4s ease;
-}
-#azure-codex-root .ac-pip.f {
-  background:linear-gradient(90deg,#002244,var(--rose));
-  border-color:var(--rose);
-  box-shadow:0 0 6px rgba(30,144,255,.5);
-}
-#azure-codex-root .ac-pip.mx {
-  background:linear-gradient(90deg,#1e90ff,var(--blush));
-  border-color:var(--blush);
-  animation: ac-route-pulse 2s infinite ease-in-out;
-}
-
-/* ── Insight Quote ── */
-#azure-codex-root .ac-quote {
-  font-family:'Cormorant Garamond',serif;
-  font-size:.78rem;font-style:italic;
-  color:var(--tx2);line-height:1.8;
-  text-align:center;padding:.6rem 1rem;
-  border-top:1px solid var(--ash2);
-  border-bottom:1px solid var(--ash2);
-  position:relative;
-  background:rgba(0,0,0,.2);
-}
-#azure-codex-root .ac-quote::before {
-  content:'\201C';position:absolute;top:-.1rem;left:.5rem;
-  font-size:2rem;color:var(--rose);opacity:.3;line-height:1;
-  font-family:'Cormorant Garamond',serif;
-}
-#azure-codex-root .ac-quote::after {
-  content:'\201D';position:absolute;bottom:-.5rem;right:.5rem;
-  font-size:2rem;color:var(--rose);opacity:.3;line-height:1;
-  font-family:'Cormorant Garamond',serif;
-}
-
-/* ── Footer ── */
-#azure-codex-root .ac-footer {
-  background:var(--ink);border-top:1px solid var(--ash2);
-  padding:.35rem 1.2rem;display:flex;justify-content:space-between;align-items:center;
-  position:relative;z-index:2;
-}
-#azure-codex-root .ac-footer::before {
-  content:'';position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--ash2),transparent);
-}
-#azure-codex-root .ac-footer-text {
-  font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-size:.58rem;color:var(--tx3);letter-spacing:.08em;
-}
-
-/* ── Corner ornaments ── */
-#azure-codex-root .ac-ornament {
-  position:absolute;font-size:.5rem;color:var(--gold);
-  opacity:.25;pointer-events:none;z-index:1;line-height:1;
-}
-#azure-codex-root .ac-ornament.tl{top:4px;left:6px;}
-#azure-codex-root .ac-ornament.tr{top:4px;right:6px;}
-#azure-codex-root .ac-ornament.bl{bottom:4px;left:6px;}
-#azure-codex-root .ac-ornament.br{bottom:4px;right:6px;}
-
-/* ── BG decoration ── */
-#azure-codex-root .ac-bg-deco {
-  position:absolute;right:-20px;bottom:-20px;
-  width:200px;height:200px;
-  opacity:.04;pointer-events:none;z-index:0;
-  font-size:180px;line-height:1;
-  filter:blur(1px);
-}
-
-/* ── Inventory styles ── */
-/* ── Inventory Add Form ── */
-#azure-codex-root .ac-inv-header {
-  padding: .5rem .8rem; border-bottom: 1px solid var(--ash2);
-}
-#azure-codex-root .ac-inv-add-row {
-  display: flex; gap: .35rem; align-items: center;
-}
-#azure-codex-root .ac-inv-input {
-  flex: 1; padding: .35rem .45rem;
-  background: var(--ink); color: var(--petal);
-  border: 1px solid var(--ash2); font-size: .7rem;
-  font-family: 'Sarabun', serif; transition: border-color .2s;
-}
-#azure-codex-root .ac-inv-input:focus { border-color: var(--rose); outline: none; }
-#azure-codex-root .ac-inv-input-sm { max-width: 50px; }
-#azure-codex-root .ac-btn-add {
-  font-family: 'Cinzel', serif; font-size: .5rem;
-  letter-spacing: .08em; cursor: pointer;
-  padding: .35rem .6rem; border: 1px solid var(--ash2);
-  background: var(--ink2); color: var(--gold);
-  transition: all .25s; white-space: nowrap;
-}
-#azure-codex-root .ac-btn-add:hover {
-  border-color: var(--gold); color: var(--gold2);
-  box-shadow: 0 0 8px rgba(106,184,232,.25);
-}
-
-/* ── Inventory List ── */
-#azure-codex-root .ac-inv-list {
-  padding: .4rem .6rem;
-}
-#azure-codex-root .ac-inv-item {
-  display: flex; align-items: center; gap: .5rem;
-  padding: .45rem .6rem; margin-bottom: 2px;
-  background: var(--ink2); border-left: 2px solid var(--ash2);
-  transition: all .2s;
-}
-#azure-codex-root .ac-inv-item:hover {
-  background: var(--ink3); border-left-color: var(--gold);
-}
-#azure-codex-root .ac-inv-item-name {
-  flex: 1; font-family: 'Cinzel', serif; font-size: .7rem;
-  color: var(--petal); letter-spacing: .08em;
-}
-#azure-codex-root .ac-inv-item-qty {
-  font-family: 'Cormorant Garamond', serif; font-size: .75rem;
-  color: var(--gold); min-width: 30px; text-align: right;
-}
-#azure-codex-root .ac-inv-item-actions {
-  display: flex; gap: .2rem; flex-shrink: 0;
-}
-#azure-codex-root .ac-inv-use-btn,
-#azure-codex-root .ac-inv-drop-btn {
-  font-family: 'Cinzel', serif; font-size: .45rem;
-  letter-spacing: .06em; cursor: pointer;
-  padding: .2rem .45rem; border: 1px solid var(--ash);
-  background: transparent; color: var(--tx3);
-  transition: all .2s; text-transform: uppercase;
-}
-#azure-codex-root .ac-inv-use-btn:hover {
-  border-color: #4caf50; color: #66bb6a;
-  box-shadow: 0 0 6px rgba(76,175,80,.3);
-}
-#azure-codex-root .ac-inv-drop-btn:hover {
-  border-color: #e57373; color: #ef5350;
-  box-shadow: 0 0 6px rgba(229,115,115,.3);
-}
-#azure-codex-root .ac-inv-empty {
-  text-align: center; padding: 2rem 1rem;
-  font-family: 'Cormorant Garamond', serif; font-style: italic;
-  color: var(--tx3); font-size: .8rem;
-}
-
-/* ── NPC Detail Gauge (full width bars) ── */
-#azure-codex-root .ac-gauge-detail {
-  display: flex; align-items: center; gap: .5rem;
-  padding: .2rem .6rem;
-}
-#azure-codex-root .ac-gauge-detail .ac-gauge-label {
-  font-size: .55rem; min-width: 75px;
-}
-
-/* ── Gold Row ── */
-#azure-codex-root .sao-gold-row {
-  text-align: center;
-  font-family: 'Cinzel', serif; font-size: .8rem;
-  letter-spacing: .12em; color: #ffd740;
-  padding: .4rem 0; margin-bottom: .5rem;
-  border-bottom: 1px solid rgba(255,215,0,.1);
-}
-#azure-codex-root .sao-gold-val {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 1.1rem; font-weight: 700;
-}
-
-/* ── No-select wrapper ── */
-#azure-codex-root .ac-wrapper { user-select: none; }
-
-/* ── Detail flex layout ── */
-#azure-codex-root .ac-detail-flex{display:flex;gap:.9rem;align-items:flex-start;margin-bottom:.85rem;}
-#azure-codex-root .ac-detail-flex-right{flex:1;}
-
-/* ── Empty state ── */
-#azure-codex-root .ac-empty-state {
-  text-align: center; padding: 3rem 1.5rem;
-  font-family: 'Cormorant Garamond', serif;
-}
-#azure-codex-root .ac-empty-state .ac-empty-icon {
-  font-size: 2.5rem; margin-bottom: .8rem; opacity: .3;
-}
-#azure-codex-root .ac-empty-state .ac-empty-title {
-  font-family: 'Cinzel', serif; font-size: .8rem;
-  color: var(--tx2); letter-spacing: .15em; margin-bottom: .5rem;
-}
-#azure-codex-root .ac-empty-state .ac-empty-desc {
-  font-size: .75rem; color: var(--tx3); font-style: italic;
-}
-
-/* ── Action Buttons ── */
-#azure-codex-root .ac-detail-actions {
-  display: flex; gap: .5rem; justify-content: center;
-  margin-top: .9rem; padding-top: .7rem;
-  border-top: 1px solid var(--ash2);
-}
-#azure-codex-root .ac-btn {
-  font-family: 'Cinzel', serif; font-size: .55rem;
-  letter-spacing: .1em; cursor: pointer;
-  padding: .4rem .9rem; border: 1px solid var(--ash2);
-  background: var(--ink2); color: var(--tx2);
-  transition: all .25s; text-transform: uppercase;
-}
-#azure-codex-root .ac-btn:hover {
-  border-color: var(--rose); color: var(--petal);
-  box-shadow: 0 0 10px rgba(30,144,255,.25);
-}
-#azure-codex-root .ac-btn-edit:hover {
-  border-color: var(--blush); color: var(--blush);
-}
-#azure-codex-root .ac-btn-remove:hover {
-  border-color: #c0392b; color: #e74c3c;
-  box-shadow: 0 0 10px rgba(231,76,60,.2);
-}
-
-/* ── Reset Button in Footer ── */
-#azure-codex-root .ac-btn-reset {
-  font-family: 'Cinzel', serif; font-size: .48rem;
-  letter-spacing: .08em; cursor: pointer;
-  padding: .25rem .6rem; border: 1px solid var(--ash2);
-  background: transparent; color: var(--tx3);
-  transition: all .25s;
-}
-#azure-codex-root .ac-btn-reset:hover {
-  border-color: #c0392b; color: #e74c3c;
-  box-shadow: 0 0 8px rgba(231,76,60,.2);
-}
-
-/* ── Back Button (NPC detail → grid) ── */
-#azure-codex-root .ac-back-btn {
-  font-family: 'Cinzel', serif;
-  font-size: .55rem; letter-spacing: .1em;
-  cursor: pointer;
-  padding: .3rem .7rem; margin: .4rem .6rem;
-  border: 1px solid var(--ash2);
-  background: transparent; color: var(--tx3);
-  transition: all .25s; display: inline-block;
-}
-#azure-codex-root .ac-back-btn:hover {
-  border-color: var(--blush); color: var(--blush);
-  box-shadow: 0 0 6px rgba(106,184,232,.2);
+/* ── Particle Background ── */
+#azure-codex-root .ac-wrapper {
+  user-select: none;
+  position: relative;
+  overflow: hidden;
+}
+#azure-codex-root .ac-wrapper::before,
+#azure-codex-root .ac-wrapper::after {
+  content: '✦';
+  position: absolute;
+  font-size: 6px;
+  color: var(--rose);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+#azure-codex-root .ac-wrapper::before {
+  left: 15%;
+  bottom: 0;
+  animation: ac-particle-drift 8s linear infinite;
+}
+#azure-codex-root .ac-wrapper::after {
+  left: 75%;
+  bottom: 0;
+  animation: ac-particle-drift 12s linear infinite 3s;
 }
 
 /* ═══════════════════════════════════════════
-   SAO-STYLE PLAYER STATUS PANEL
+   HEADER — Glassmorphism Bar
    ═══════════════════════════════════════════ */
 
-#azure-codex-root .sao-status {
-  padding: .8rem;
+#azure-codex-root .ac-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .7rem 1rem;
+  background: linear-gradient(180deg, rgba(6,16,28,.9) 0%, rgba(2,6,12,.7) 100%);
+  border-bottom: 1px solid var(--glass-border);
+  position: relative;
+  z-index: 2;
+}
+#azure-codex-root .ac-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+#azure-codex-root .ac-title {
+  font-family: 'Cinzel', serif;
+  font-size: .85rem;
+  letter-spacing: .3em;
+  color: var(--gold);
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(106,184,232,.4);
+}
+#azure-codex-root .ac-subtitle {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: .7rem;
+  font-style: italic;
+  color: var(--tx2);
+  letter-spacing: .1em;
+}
+#azure-codex-root .ac-header-right {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+#azure-codex-root .ac-heartbeat {
+  width: 50px;
+  height: 20px;
+  overflow: hidden;
+  opacity: .5;
+}
+#azure-codex-root .ac-heartbeat svg {
+  animation: ac-scroll 2s linear infinite;
 }
 
-/* ── Level Badge ── */
+/* ── Enable/Disable Toggle Switch ── */
+#azure-codex-root .ac-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+#azure-codex-root .ac-toggle-label {
+  font-family: 'Cinzel', serif;
+  font-size: .42rem;
+  letter-spacing: .1em;
+  color: var(--tx3);
+  transition: color .3s;
+}
+#azure-codex-root .ac-toggle-label.on { color: #4caf50; }
+#azure-codex-root .ac-toggle-label.off { color: #e57373; }
+
+#azure-codex-root .ac-toggle {
+  position: relative;
+  width: 36px;
+  height: 18px;
+  border-radius: 9px;
+  background: #1a1a2e;
+  border: 1px solid var(--ash2);
+  cursor: pointer;
+  transition: all .3s ease;
+  flex-shrink: 0;
+}
+#azure-codex-root .ac-toggle.active {
+  background: rgba(76,175,80,.15);
+  border-color: rgba(76,175,80,.4);
+  box-shadow: 0 0 10px rgba(76,175,80,.2);
+}
+#azure-codex-root .ac-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e57373;
+  box-shadow: 0 0 6px rgba(229,115,115,.4);
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+#azure-codex-root .ac-toggle.active::after {
+  left: 20px;
+  background: #4caf50;
+  box-shadow: 0 0 8px rgba(76,175,80,.6);
+}
+
+/* ── Close Button ── */
+#azure-codex-root .ac-close-btn {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  font-size: .5rem;
+  letter-spacing: .15em;
+  color: var(--tx2);
+  border: 1px solid var(--ash2);
+  padding: .3rem .6rem;
+  transition: all .3s;
+  background: transparent;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-close-btn:hover {
+  border-color: var(--rose);
+  color: var(--tx);
+  box-shadow: 0 0 12px rgba(30,144,255,.25);
+  background: rgba(30,144,255,.05);
+}
+
+/* ═══════════════════════════════════════════
+   BODY — Scrollable Area
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-body {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: max-height .5s cubic-bezier(.4,0,.2,1);
+  position: relative;
+  z-index: 1;
+}
+#azure-codex-root .ac-body::-webkit-scrollbar { width: 4px; }
+#azure-codex-root .ac-body::-webkit-scrollbar-track { background: transparent; }
+#azure-codex-root .ac-body::-webkit-scrollbar-thumb {
+  background: var(--ash2);
+  border-radius: 4px;
+}
+#azure-codex-root .ac-body::-webkit-scrollbar-thumb:hover {
+  background: var(--rose);
+}
+
+/* ═══════════════════════════════════════════
+   TABS — Animated Underline
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-tabs {
+  display: flex;
+  background: rgba(4,10,20,.6);
+  border-bottom: 1px solid var(--glass-border);
+  position: relative;
+  overflow-x: auto;
+}
+#azure-codex-root .ac-tabs::-webkit-scrollbar { height: 0; }
+#azure-codex-root .ac-tab {
+  flex: 1;
+  padding: .6rem .3rem;
+  text-align: center;
+  font-family: 'Cinzel', serif;
+  font-size: .55rem;
+  letter-spacing: .1em;
+  color: var(--tx3);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: all .3s;
+  white-space: nowrap;
+  position: relative;
+  min-width: 90px;
+}
+#azure-codex-root .ac-tab:hover {
+  color: var(--tx);
+  background: rgba(30,144,255,.04);
+}
+#azure-codex-root .ac-tab.active {
+  color: var(--gold);
+  background: linear-gradient(180deg, rgba(30,144,255,.12), transparent);
+  text-shadow: 0 0 8px rgba(106,184,232,.3);
+}
+#azure-codex-root .ac-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  animation: ac-tab-glow 2s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════
+   PANELS
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-panel {
+  display: none;
+  animation: ac-fade-in .35s ease;
+}
+#azure-codex-root .ac-panel.active { display: block; }
+
+/* ═══════════════════════════════════════════
+   NPC GRID (Relationship Tab)
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--ash);
+  padding: 0;
+}
+
+/* ── NPC Card with Glow Hover ── */
+#azure-codex-root .ac-card {
+  background: var(--ink2);
+  padding: .8rem 1rem;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+#azure-codex-root .ac-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ash), transparent);
+}
+#azure-codex-root .ac-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(30,144,255,.08), transparent 70%);
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+#azure-codex-root .ac-card:hover {
+  background: var(--ink3);
+  border-left-color: var(--rose);
+  box-shadow: inset 0 0 30px rgba(30,144,255,.05);
+}
+#azure-codex-root .ac-card:hover::after { opacity: 1; }
+
+#azure-codex-root .ac-card-name {
+  font-family: 'Cinzel', serif;
+  font-size: .9rem;
+  color: var(--petal);
+  letter-spacing: .08em;
+  margin-bottom: .05rem;
+  position: relative;
+  z-index: 1;
+}
+#azure-codex-root .ac-card-dept {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: .65rem;
+  color: var(--tx2);
+  margin-bottom: .55rem;
+  letter-spacing: .05em;
+  position: relative;
+  z-index: 1;
+}
+#azure-codex-root .ac-card-divider {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .5rem;
+  position: relative;
+  z-index: 1;
+}
+#azure-codex-root .ac-card-divider::before,
+#azure-codex-root .ac-card-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ash2));
+}
+#azure-codex-root .ac-card-divider::after {
+  background: linear-gradient(270deg, transparent, var(--ash2));
+}
+#azure-codex-root .ac-card-divider span {
+  font-size: .5rem;
+  color: var(--tx3);
+  letter-spacing: .05em;
+}
+
+/* ── Gauge Bars ── */
+#azure-codex-root .ac-gauge {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .28rem;
+  position: relative;
+  z-index: 1;
+}
+#azure-codex-root .ac-gauge-label {
+  font-family: 'Cinzel', serif;
+  font-size: .44rem;
+  color: var(--tx2);
+  letter-spacing: .1em;
+  width: 2.8rem;
+  flex-shrink: 0;
+}
+#azure-codex-root .ac-gauge-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--ash);
+  overflow: hidden;
+  position: relative;
+  border-radius: 2px;
+}
+#azure-codex-root .ac-gauge-fill {
+  height: 100%;
+  position: relative;
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+}
+#azure-codex-root .ac-gauge-fill.lk {
+  background: linear-gradient(90deg, #002244, var(--rose));
+  box-shadow: 0 0 8px rgba(30,144,255,.5), inset 0 0 8px rgba(255,255,255,.05);
+}
+#azure-codex-root .ac-gauge-fill.an {
+  background: linear-gradient(90deg, #102022, var(--gold));
+  box-shadow: 0 0 6px rgba(106,184,232,.4), inset 0 0 6px rgba(255,255,255,.05);
+}
+#azure-codex-root .ac-gauge-val.lk {
+  color: var(--blush);
+  text-shadow: 0 0 5px rgba(51,204,255,.4);
+}
+#azure-codex-root .ac-gauge-val.an { color: var(--gold2); }
+#azure-codex-root .ac-stat-box.lk::before {
+  background: linear-gradient(90deg, transparent, var(--rose), transparent);
+}
+#azure-codex-root .ac-stat-box.an::before {
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+#azure-codex-root .ac-stat-box.st::before {
+  background: linear-gradient(90deg, transparent, var(--ash2), transparent);
+}
+#azure-codex-root .ac-stat-val.lk {
+  color: var(--blush);
+  text-shadow: 0 0 20px rgba(30,144,255,.5);
+}
+#azure-codex-root .ac-stat-val.an { color: var(--gold2); }
+#azure-codex-root .ac-stat-val.st {
+  font-size: .7rem;
+  font-family: 'Cinzel', serif;
+  color: var(--tx);
+  letter-spacing: .05em;
+  margin-top: .15rem;
+  text-transform: uppercase;
+}
+#azure-codex-root .ac-card.active {
+  background: var(--ink3);
+  border-left-color: var(--rose);
+}
+#azure-codex-root .ac-detail-flex {
+  display: flex;
+  gap: .9rem;
+  align-items: flex-start;
+  margin-bottom: .85rem;
+}
+#azure-codex-root .ac-detail-flex-right { flex: 1; }
+#azure-codex-root .sao-stat-bar-fill {
+  background: linear-gradient(90deg, #1a5276, #33ccff, #6ab8e8);
+}
+#azure-codex-root .ac-gauge-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: .65rem;
+  width: 1.6rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Detail Panel ── */
+#azure-codex-root .ac-detail { padding: 1rem 1.2rem; }
+#azure-codex-root .ac-detail-head {
+  text-align: center;
+  margin-bottom: 1rem;
+  padding-bottom: .8rem;
+  border-bottom: 1px solid var(--ash2);
+  position: relative;
+}
+#azure-codex-root .ac-detail-head::before,
+#azure-codex-root .ac-detail-head::after {
+  content: '✦';
+  position: absolute;
+  bottom: -0.55rem;
+  font-size: .6rem;
+  color: var(--gold);
+  opacity: .6;
+}
+#azure-codex-root .ac-detail-head::before { left: calc(50% - 60px); }
+#azure-codex-root .ac-detail-head::after { right: calc(50% - 60px); }
+#azure-codex-root .ac-detail-name {
+  font-family: 'Cinzel', serif;
+  font-size: 1.1rem;
+  color: var(--petal);
+  letter-spacing: .15em;
+  display: block;
+  margin-bottom: .15rem;
+  text-shadow: 0 0 15px rgba(30,144,255,.25);
+}
+#azure-codex-root .ac-detail-nick {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: .75rem;
+  color: var(--tx2);
+  letter-spacing: .1em;
+}
+#azure-codex-root .ac-detail-dept {
+  font-family: 'Cinzel', serif;
+  font-size: .5rem;
+  color: var(--tx3);
+  letter-spacing: .2em;
+  margin-top: .3rem;
+  text-transform: uppercase;
+}
+
+/* ── 3-stat boxes ── */
+#azure-codex-root .ac-stats3 {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: .5rem;
+  margin-bottom: .9rem;
+}
+#azure-codex-root .ac-stat-box {
+  text-align: center;
+  background: var(--ink2);
+  border: 1px solid var(--ash2);
+  padding: .5rem .3rem;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-stat-box::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+}
+#azure-codex-root .ac-stat-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.4rem;
+  font-weight: 300;
+  display: block;
+  margin-bottom: .1rem;
+  line-height: 1;
+}
+#azure-codex-root .ac-stat-label {
+  font-family: 'Cinzel', serif;
+  font-size: .42rem;
+  color: var(--tx3);
+  letter-spacing: .15em;
+}
+
+/* ── Detail Gauge ── */
+#azure-codex-root .ac-gauge-detail {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .2rem .6rem;
+}
+#azure-codex-root .ac-gauge-detail .ac-gauge-label {
+  font-size: .55rem;
+  min-width: 75px;
+}
+
+/* ── Pips ── */
+#azure-codex-root .ac-pips-wrap { margin-bottom: .9rem; }
+#azure-codex-root .ac-pips-head {
+  font-family: 'Cinzel', serif;
+  font-size: .48rem;
+  color: var(--tx2);
+  letter-spacing: .12em;
+  margin-bottom: .35rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#azure-codex-root .ac-pips-head span:last-child {
+  color: var(--gold);
+  font-size: .55rem;
+  text-shadow: 0 0 5px rgba(106,184,232,.4);
+}
+#azure-codex-root .ac-pips {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+#azure-codex-root .ac-pip {
+  width: 28px; height: 6px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid var(--ash);
+  position: relative;
+  overflow: hidden;
+  clip-path: polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
+  transition: all 0.4s ease;
+}
+#azure-codex-root .ac-pip.f {
+  background: linear-gradient(90deg, #002244, var(--rose));
+  border-color: var(--rose);
+  box-shadow: 0 0 6px rgba(30,144,255,.5);
+}
+#azure-codex-root .ac-pip.mx {
+  background: linear-gradient(90deg, #1e90ff, var(--blush));
+  border-color: var(--blush);
+  animation: ac-route-pulse 2s infinite ease-in-out;
+}
+
+/* ── Quote ── */
+#azure-codex-root .ac-quote {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: .78rem;
+  font-style: italic;
+  color: var(--tx2);
+  line-height: 1.8;
+  text-align: center;
+  padding: .6rem 1rem;
+  border-top: 1px solid var(--ash2);
+  border-bottom: 1px solid var(--ash2);
+  position: relative;
+  background: rgba(0,0,0,.2);
+}
+#azure-codex-root .ac-quote::before {
+  content: '\201C';
+  position: absolute;
+  top: -.1rem; left: .5rem;
+  font-size: 2rem;
+  color: var(--rose);
+  opacity: .3;
+  line-height: 1;
+}
+#azure-codex-root .ac-quote::after {
+  content: '\201D';
+  position: absolute;
+  bottom: -.5rem; right: .5rem;
+  font-size: 2rem;
+  color: var(--rose);
+  opacity: .3;
+  line-height: 1;
+}
+
+/* ═══════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-footer {
+  background: rgba(1,4,10,.7);
+  border-top: 1px solid var(--glass-border);
+  padding: .4rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+#azure-codex-root .ac-footer::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ash2), transparent);
+}
+#azure-codex-root .ac-footer-text {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: .58rem;
+  color: var(--tx3);
+  letter-spacing: .08em;
+}
+
+/* ── Corner Ornaments ── */
+#azure-codex-root .ac-ornament {
+  position: absolute;
+  font-size: .5rem;
+  color: var(--gold);
+  opacity: .2;
+  pointer-events: none;
+  z-index: 1;
+  line-height: 1;
+}
+#azure-codex-root .ac-ornament.tl { top: 4px; left: 6px; }
+#azure-codex-root .ac-ornament.tr { top: 4px; right: 6px; }
+#azure-codex-root .ac-ornament.bl { bottom: 4px; left: 6px; }
+#azure-codex-root .ac-ornament.br { bottom: 4px; right: 6px; }
+
+/* ── BG Deco ── */
+#azure-codex-root .ac-bg-deco {
+  position: absolute;
+  right: -20px; bottom: -20px;
+  width: 200px; height: 200px;
+  opacity: .03;
+  pointer-events: none;
+  z-index: 0;
+  font-size: 180px;
+  line-height: 1;
+  filter: blur(2px);
+}
+
+/* ── Empty State ── */
+#azure-codex-root .ac-empty-state {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  font-family: 'Cormorant Garamond', serif;
+}
+#azure-codex-root .ac-empty-state .ac-empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: .8rem;
+  opacity: .3;
+}
+#azure-codex-root .ac-empty-state .ac-empty-title {
+  font-family: 'Cinzel', serif;
+  font-size: .8rem;
+  color: var(--tx2);
+  letter-spacing: .15em;
+  margin-bottom: .5rem;
+}
+#azure-codex-root .ac-empty-state .ac-empty-desc {
+  font-size: .75rem;
+  color: var(--tx3);
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════
+   BUTTONS — Shared
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-detail-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: .9rem;
+  padding-top: .7rem;
+  border-top: 1px solid var(--ash2);
+}
+#azure-codex-root .ac-info-badge {
+  font-family: 'Sarabun', serif;
+  font-size: .6rem;
+  letter-spacing: .04em;
+  color: var(--tx3);
+  border: 1px solid var(--ash2);
+  padding: .2rem .6rem;
+  border-radius: 3px;
+  background: rgba(255,255,255,.02);
+  cursor: default;
+  user-select: none;
+  pointer-events: none;
+}
+#azure-codex-root .ac-btn {
+  font-family: 'Cinzel', serif;
+  font-size: .55rem;
+  letter-spacing: .1em;
+  cursor: pointer;
+  padding: .4rem .9rem;
+  border: 1px solid var(--ash2);
+  background: var(--ink2);
+  color: var(--tx2);
+  transition: all .25s;
+  text-transform: uppercase;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-btn:hover {
+  border-color: var(--rose);
+  color: var(--petal);
+  box-shadow: 0 0 12px rgba(30,144,255,.3);
+  background: rgba(30,144,255,.06);
+}
+#azure-codex-root .ac-btn-edit:hover {
+  border-color: var(--blush);
+  color: var(--blush);
+}
+#azure-codex-root .ac-btn-remove:hover {
+  border-color: #c0392b;
+  color: #e74c3c;
+  box-shadow: 0 0 10px rgba(231,76,60,.2);
+}
+#azure-codex-root .ac-btn-reset {
+  font-family: 'Cinzel', serif;
+  font-size: .48rem;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: .25rem .6rem;
+  border: 1px solid var(--ash2);
+  background: transparent;
+  color: var(--tx3);
+  transition: all .25s;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-btn-reset:hover {
+  border-color: #c0392b;
+  color: #e74c3c;
+  box-shadow: 0 0 8px rgba(231,76,60,.2);
+}
+#azure-codex-root .ac-back-btn {
+  font-family: 'Cinzel', serif;
+  font-size: .55rem;
+  letter-spacing: .1em;
+  cursor: pointer;
+  padding: .35rem .7rem;
+  margin: .4rem .6rem;
+  border: 1px solid var(--ash2);
+  background: transparent;
+  color: var(--tx3);
+  transition: all .25s;
+  display: inline-block;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-back-btn:hover {
+  border-color: var(--blush);
+  color: var(--blush);
+  box-shadow: 0 0 8px rgba(106,184,232,.2);
+}
+
+/* ═══════════════════════════════════════════
+   INVENTORY
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .ac-inv-header {
+  padding: .5rem .8rem;
+  border-bottom: 1px solid var(--ash2);
+}
+#azure-codex-root .ac-inv-add-row {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+}
+#azure-codex-root .ac-inv-input {
+  flex: 1;
+  padding: .4rem .5rem;
+  background: var(--ink);
+  color: var(--petal);
+  border: 1px solid var(--ash2);
+  font-size: .7rem;
+  font-family: 'Sarabun', serif;
+  transition: border-color .2s;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-inv-input:focus {
+  border-color: var(--rose);
+  outline: none;
+  box-shadow: 0 0 8px rgba(30,144,255,.15);
+}
+#azure-codex-root .ac-inv-input-sm { max-width: 50px; }
+#azure-codex-root .ac-btn-add {
+  font-family: 'Cinzel', serif;
+  font-size: .5rem;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: .4rem .6rem;
+  border: 1px solid var(--ash2);
+  background: var(--ink2);
+  color: var(--gold);
+  transition: all .25s;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+#azure-codex-root .ac-btn-add:hover {
+  border-color: var(--gold);
+  color: var(--gold2);
+  box-shadow: 0 0 10px rgba(106,184,232,.3);
+}
+
+#azure-codex-root .ac-inv-list { padding: .4rem .6rem; }
+#azure-codex-root .ac-inv-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .6rem;
+  margin-bottom: 2px;
+  background: var(--ink2);
+  border-left: 2px solid var(--ash2);
+  transition: all .2s;
+  border-radius: 0 4px 4px 0;
+}
+#azure-codex-root .ac-inv-item:hover {
+  background: var(--ink3);
+  border-left-color: var(--gold);
+}
+#azure-codex-root .ac-inv-item-name {
+  flex: 1;
+  font-family: 'Cinzel', serif;
+  font-size: .7rem;
+  color: var(--petal);
+  letter-spacing: .08em;
+}
+#azure-codex-root .ac-inv-item-qty {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: .75rem;
+  color: var(--gold);
+  min-width: 30px;
+  text-align: right;
+}
+#azure-codex-root .ac-inv-item-actions {
+  display: flex;
+  gap: .2rem;
+  flex-shrink: 0;
+}
+#azure-codex-root .ac-inv-use-btn,
+#azure-codex-root .ac-inv-drop-btn {
+  font-family: 'Cinzel', serif;
+  font-size: .45rem;
+  letter-spacing: .06em;
+  cursor: pointer;
+  padding: .25rem .45rem;
+  border: 1px solid var(--ash);
+  background: transparent;
+  color: var(--tx3);
+  transition: all .2s;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+#azure-codex-root .ac-inv-use-btn:hover {
+  border-color: #4caf50;
+  color: #66bb6a;
+  box-shadow: 0 0 8px rgba(76,175,80,.3);
+}
+#azure-codex-root .ac-inv-drop-btn:hover {
+  border-color: #e57373;
+  color: #ef5350;
+  box-shadow: 0 0 8px rgba(229,115,115,.3);
+}
+#azure-codex-root .ac-inv-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  color: var(--tx3);
+  font-size: .8rem;
+}
+
+/* ═══════════════════════════════════════════
+   SAO-STYLE STATUS PANEL
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root .sao-status { padding: .8rem; }
+
+/* ── Level Badge with Glow Halo ── */
 #azure-codex-root .sao-level-badge {
   text-align: center;
   font-family: 'Cinzel', serif;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   letter-spacing: .25em;
   color: #ffd700;
-  text-shadow: 0 0 12px rgba(255,215,0,.5), 0 0 24px rgba(255,215,0,.2);
+  text-shadow:
+    0 0 12px rgba(255,215,0,.5),
+    0 0 30px rgba(255,215,0,.2),
+    0 0 60px rgba(255,215,0,.08);
   margin-bottom: .8rem;
-  padding: .4rem 0;
+  padding: .5rem 0;
   border-bottom: 1px solid rgba(255,215,0,.15);
+  position: relative;
+}
+#azure-codex-root .sao-level-badge::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid rgba(255,215,0,.08);
+  border-radius: 6px;
+  animation: ac-halo-rotate 8s linear infinite;
+  pointer-events: none;
 }
 
-/* ── HP / MP / EXP Bars ── */
+/* ── HP / MP / EXP Bars with Shimmer ── */
 #azure-codex-root .sao-bars {
-  display: flex; flex-direction: column; gap: .45rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
   margin-bottom: .8rem;
 }
 #azure-codex-root .sao-bar-row {
-  display: flex; align-items: center; gap: .5rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
 }
 #azure-codex-root .sao-bar-label {
   font-family: 'Cinzel', serif;
-  font-size: .6rem; font-weight: 700;
-  letter-spacing: .12em; width: 30px;
-  text-align: right; flex-shrink: 0;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
 }
 #azure-codex-root .hp-label { color: #3ddc84; }
 #azure-codex-root .mp-label { color: #64b5f6; }
 #azure-codex-root .exp-label { color: #ffb74d; }
 #azure-codex-root .sao-bar {
-  flex: 1; height: 10px;
+  flex: 1;
+  height: 12px;
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.08);
-  overflow: hidden; position: relative;
+  overflow: hidden;
+  position: relative;
+  border-radius: 3px;
 }
 #azure-codex-root .sao-bar-fill {
   height: 100%;
@@ -584,143 +1110,132 @@
 }
 #azure-codex-root .sao-bar-fill::after {
   content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,.2) 0%, transparent 60%);
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,.3) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: ac-shimmer 3s ease-in-out infinite;
 }
 #azure-codex-root .sao-hp {
   background: linear-gradient(90deg, #1b5e20, #4caf50, #66bb6a);
-  box-shadow: 0 0 8px rgba(76,175,80,.5);
+  box-shadow: 0 0 10px rgba(76,175,80,.5);
 }
 #azure-codex-root .sao-mp {
   background: linear-gradient(90deg, #0d47a1, #2196f3, #42a5f5);
-  box-shadow: 0 0 8px rgba(33,150,243,.5);
+  box-shadow: 0 0 10px rgba(33,150,243,.5);
 }
 #azure-codex-root .sao-exp {
   background: linear-gradient(90deg, #e65100, #ff9800, #ffb74d);
-  box-shadow: 0 0 8px rgba(255,152,0,.5);
+  box-shadow: 0 0 10px rgba(255,152,0,.5);
 }
 #azure-codex-root .sao-bar-val {
   font-family: 'Cormorant Garamond', serif;
-  font-size: .7rem; color: var(--petal);
-  min-width: 65px; text-align: right;
-  white-space: nowrap; flex-shrink: 0;
+  font-size: .75rem;
+  color: var(--petal);
+  min-width: 65px;
+  text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Gold Row ── */
+#azure-codex-root .sao-gold-row {
+  text-align: center;
+  font-family: 'Cinzel', serif;
+  font-size: .85rem;
+  letter-spacing: .12em;
+  color: #ffd740;
+  padding: .5rem 0;
+  margin-bottom: .5rem;
+  border-bottom: 1px solid rgba(255,215,0,.1);
+  text-shadow: 0 0 8px rgba(255,215,0,.3);
+}
+#azure-codex-root .sao-gold-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.2rem;
+  font-weight: 700;
 }
 
 /* ── Points Banner ── */
 #azure-codex-root .sao-points-banner {
   text-align: center;
   font-family: 'Cinzel', serif;
-  font-size: .7rem; letter-spacing: .1em;
+  font-size: .7rem;
+  letter-spacing: .1em;
   color: #ffd740;
   background: rgba(255,215,0,.06);
   border: 1px solid rgba(255,215,0,.2);
-  padding: .5rem .8rem; margin-bottom: .6rem;
+  padding: .5rem .8rem;
+  margin-bottom: .6rem;
+  border-radius: 4px;
   animation: sao-pulse 2s ease-in-out infinite;
 }
-@keyframes sao-pulse {
-  0%, 100% { border-color: rgba(255,215,0,.2); box-shadow: none; }
-  50% { border-color: rgba(255,215,0,.5); box-shadow: 0 0 12px rgba(255,215,0,.15); }
-}
 
-/* ── Conditions Row ── */
+/* ── Conditions ── */
 #azure-codex-root .sao-conditions-row {
-  display: flex; flex-wrap: wrap; gap: .3rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
   justify-content: center;
-  padding: .4rem .5rem; margin-bottom: .4rem;
+  padding: .4rem .5rem;
+  margin-bottom: .4rem;
 }
 #azure-codex-root .sao-condition-badge {
-  font-family: 'Cinzel', serif; font-size: .5rem;
-  letter-spacing: .06em; padding: .2rem .5rem;
-  border-radius: 2px; cursor: default;
+  font-family: 'Cinzel', serif;
+  font-size: .5rem;
+  letter-spacing: .06em;
+  padding: .25rem .5rem;
+  border-radius: 4px;
+  cursor: default;
   white-space: nowrap;
 }
 #azure-codex-root .sao-condition-badge.debuff {
-  color: #ef5350; border: 1px solid rgba(239,83,80,.3);
+  color: #ef5350;
+  border: 1px solid rgba(239,83,80,.3);
   background: rgba(239,83,80,.06);
   animation: ac-debuff-pulse 2s ease-in-out infinite;
 }
 #azure-codex-root .sao-condition-badge.buff {
-  color: #4caf50; border: 1px solid rgba(76,175,80,.3);
+  color: #4caf50;
+  border: 1px solid rgba(76,175,80,.3);
   background: rgba(76,175,80,.06);
-}
-@keyframes ac-debuff-pulse {
-  0%, 100% { opacity: .8; }
-  50% { opacity: 1; box-shadow: 0 0 8px rgba(239,83,80,.3); }
 }
 
 /* ── Stats Grid ── */
 #azure-codex-root .sao-stats-grid {
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 #azure-codex-root .sao-stat-row {
-  display: flex; align-items: center; gap: .5rem;
-  padding: .45rem .6rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .6rem;
   background: var(--ink2);
   border-left: 2px solid var(--ash2);
-  transition: all .2s;
+  transition: all .25s;
+  border-radius: 0 4px 4px 0;
 }
 #azure-codex-root .sao-stat-row:hover {
   background: var(--ink3);
   border-left-color: var(--blush);
+  box-shadow: inset 0 0 20px rgba(51,204,255,.04);
 }
 #azure-codex-root .sao-stat-name {
   font-family: 'Cinzel', serif;
-  font-size: .65rem; font-weight: 700;
+  font-size: .65rem;
+  font-weight: 700;
   letter-spacing: .15em;
   color: var(--blush);
-  width: 40px; flex-shrink: 0;
-}
-#azure-codex-root .sao-stat-bar {
-  flex: 1; height: 6px;
-  background: var(--ash); border-radius: 3px;
-  overflow: hidden;
-}
-#azure-codex-root .sao-stat-bar-fill {
-  height: 100%; border-radius: 3px;
-  background: linear-gradient(90deg, #1a5276, #33ccff, #6ab8e8);
-  transition: width .4s ease;
-}
-#azure-codex-root .sao-stat-value {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: .85rem; font-weight: 700;
-  color: var(--petal);
-  min-width: 30px; text-align: right;
+  width: 40px;
   flex-shrink: 0;
 }
-
-/* ── Stat +/- Buttons ── */
-#azure-codex-root .sao-stat-btn {
-  width: 24px; height: 24px;
-  font-size: .8rem; font-weight: 700;
-  border: 1px solid var(--ash2);
-  background: var(--ink2); color: var(--blush);
-  cursor: pointer; display: flex;
-  align-items: center; justify-content: center;
-  transition: all .2s; flex-shrink: 0;
-  line-height: 1; padding: 0;
-  font-family: 'Cinzel', serif;
-}
-#azure-codex-root .sao-stat-btn:hover:not(.disabled) {
-  border-color: var(--blush); color: #fff;
-  box-shadow: 0 0 8px rgba(51,204,255,.4);
-  background: rgba(51,204,255,.1);
-}
-#azure-codex-root .sao-stat-btn.sao-stat-plus:hover:not(.disabled) {
-  border-color: #4caf50; color: #66bb6a;
-  box-shadow: 0 0 8px rgba(76,175,80,.4);
-  background: rgba(76,175,80,.1);
-}
-#azure-codex-root .sao-stat-btn.sao-stat-minus:hover:not(.disabled) {
-  border-color: #e57373; color: #ef5350;
-  box-shadow: 0 0 8px rgba(229,115,115,.4);
-  background: rgba(229,115,115,.1);
-}
-#azure-codex-root .sao-stat-btn.disabled {
-  opacity: .2; cursor: not-allowed;
-  pointer-events: none;
-}
-
-/* ── Clickable Stat Names ── */
 #azure-codex-root .sao-stat-clickable {
   cursor: pointer;
   transition: all .2s;
@@ -728,32 +1243,104 @@
 }
 #azure-codex-root .sao-stat-clickable:hover {
   filter: brightness(1.4);
-  text-shadow: 0 0 8px currentColor;
+  text-shadow: 0 0 10px currentColor;
+}
+#azure-codex-root .sao-stat-bar {
+  flex: 1;
+  height: 7px;
+  background: var(--ash);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#azure-codex-root .sao-stat-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .4s ease;
+}
+#azure-codex-root .sao-stat-value {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--petal);
+  min-width: 30px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
-/* ── Skills Header ── */
+/* ── Stat +/- Buttons ── */
+#azure-codex-root .sao-stat-btn {
+  width: 28px; height: 28px;
+  font-size: .85rem;
+  font-weight: 700;
+  border: 1px solid var(--ash2);
+  background: var(--ink2);
+  color: var(--blush);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0;
+  font-family: 'Cinzel', serif;
+  border-radius: 4px;
+}
+#azure-codex-root .sao-stat-btn:hover:not(.disabled) {
+  border-color: var(--blush);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(51,204,255,.4);
+  background: rgba(51,204,255,.1);
+}
+#azure-codex-root .sao-stat-btn.sao-stat-plus:hover:not(.disabled) {
+  border-color: #4caf50;
+  color: #66bb6a;
+  box-shadow: 0 0 10px rgba(76,175,80,.4);
+  background: rgba(76,175,80,.1);
+}
+#azure-codex-root .sao-stat-btn.sao-stat-minus:hover:not(.disabled) {
+  border-color: #e57373;
+  color: #ef5350;
+  box-shadow: 0 0 10px rgba(229,115,115,.4);
+  background: rgba(229,115,115,.1);
+}
+#azure-codex-root .sao-stat-btn.disabled {
+  opacity: .2;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════
+   SKILLS
+   ═══════════════════════════════════════════ */
+
 #azure-codex-root .sao-skills-header {
   font-family: 'Cinzel', serif;
-  font-size: .7rem; letter-spacing: .18em;
-  color: #6ab8e8; text-align: center;
+  font-size: .75rem;
+  letter-spacing: .18em;
+  color: #6ab8e8;
+  text-align: center;
   padding: .7rem .5rem .4rem;
   margin-top: .6rem;
   border-top: 1px solid var(--ash2);
-  text-shadow: 0 0 8px rgba(106,184,232,.3);
+  text-shadow: 0 0 10px rgba(106,184,232,.35);
 }
-
-/* ── Skills List ── */
 #azure-codex-root .sao-skills-list {
   padding: 0 .5rem .3rem;
-  display: flex; flex-direction: column; gap: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 #azure-codex-root .sao-skill-item {
-  display: flex; align-items: center; gap: .5rem;
-  padding: .4rem .5rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .5rem;
   background: rgba(51,204,255,.03);
   border: 1px solid var(--ash2);
-  border-radius: 3px;
-  transition: all .2s; cursor: default;
+  border-radius: 4px;
+  transition: all .25s;
+  cursor: default;
 }
 #azure-codex-root .sao-skill-item:hover {
   background: rgba(51,204,255,.08);
@@ -765,31 +1352,42 @@
 #azure-codex-root .sao-skill-clickable:hover {
   background: rgba(51,204,255,.15) !important;
   border-color: rgba(51,204,255,.5) !important;
-  box-shadow: 0 0 8px rgba(51,204,255,.25);
+  box-shadow: 0 0 12px rgba(51,204,255,.25);
 }
 #azure-codex-root .sao-skill-rank {
   font-family: 'Cinzel', serif;
-  font-size: .65rem; font-weight: 700;
-  width: 22px; height: 22px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid; flex-shrink: 0;
+  font-size: .7rem;
+  font-weight: 700;
+  width: 24px; height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid;
+  flex-shrink: 0;
+  border-radius: 3px;
 }
 #azure-codex-root .sao-skill-info {
-  flex: 1; display: flex; flex-direction: column; gap: .1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
   min-width: 0;
 }
 #azure-codex-root .sao-skill-name {
   font-family: 'Cinzel', serif;
-  font-size: .65rem; color: var(--petal);
+  font-size: .68rem;
+  color: var(--petal);
   letter-spacing: .08em;
 }
 #azure-codex-root .sao-skill-from {
-  font-size: .5rem; letter-spacing: .06em;
+  font-size: .5rem;
+  letter-spacing: .06em;
 }
 #azure-codex-root .sao-skill-desc {
   display: none;
   font-family: 'Sarabun', serif;
-  font-size: .6rem; color: #8aa8c0;
+  font-size: .6rem;
+  color: #8aa8c0;
   line-height: 1.4;
 }
 #azure-codex-root .sao-skill-item:hover .sao-skill-desc {
@@ -798,68 +1396,241 @@
 #azure-codex-root .sao-skills-empty {
   text-align: center;
   font-family: 'Cormorant Garamond', serif;
-  font-style: italic; font-size: .75rem;
-  color: var(--tx3); padding: .8rem .5rem;
+  font-style: italic;
+  font-size: .75rem;
+  color: var(--tx3);
+  padding: .8rem .5rem;
 }
-
-/* ── Next Unlock Hint ── */
-#azure-codex-root .sao-next-unlock {
-  font-family: 'Cinzel', serif;
-  font-size: .6rem; letter-spacing: .06em;
-  color: var(--tx2); text-align: center;
-  padding: .5rem .6rem; margin-top: .3rem;
-  background: rgba(255,255,255,.02);
-  border: 1px dashed var(--ash2);
+#azure-codex-root .sao-skill-remove {
+  width: 24px; height: 24px;
+  font-size: .75rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tx3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all .2s;
+  padding: 0;
   border-radius: 3px;
+}
+#azure-codex-root .sao-skill-remove:hover {
+  border-color: #e57373;
+  color: #ef5350;
+  box-shadow: 0 0 6px rgba(229,115,115,.3);
 }
 
 /* ── Skill Action Bar ── */
 #azure-codex-root .sao-skill-actions {
-  display: flex; align-items: center; justify-content: center;
-  gap: .6rem; padding: .5rem; margin-top: .3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  padding: .5rem;
+  margin-top: .3rem;
 }
 #azure-codex-root .sao-skill-request-btn {
-  font-family: 'Cinzel', serif; font-size: .55rem;
-  letter-spacing: .08em; cursor: pointer;
-  padding: .35rem .7rem;
+  font-family: 'Cinzel', serif;
+  font-size: .58rem;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: .4rem .8rem;
   border: 1px solid rgba(255,215,0,.3);
-  background: rgba(255,215,0,.06); color: #ffd740;
-  transition: all .25s; white-space: nowrap;
+  background: rgba(255,215,0,.06);
+  color: #ffd740;
+  transition: all .25s;
+  white-space: nowrap;
+  border-radius: 4px;
 }
 #azure-codex-root .sao-skill-request-btn:hover {
-  border-color: #ffd740; color: #fff;
-  box-shadow: 0 0 10px rgba(255,215,0,.3);
+  border-color: #ffd740;
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255,215,0,.35);
   background: rgba(255,215,0,.12);
 }
 #azure-codex-root .sao-sync-universe-btn {
-  font-family: 'Cinzel', serif; font-size: .55rem;
-  letter-spacing: .08em; cursor: pointer;
-  padding: .35rem .7rem;
+  font-family: 'Cinzel', serif;
+  font-size: .58rem;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: .4rem .8rem;
   border: 1px solid rgba(30,144,255,.3);
-  background: rgba(30,144,255,.06); color: #6ab8e8;
-  transition: all .25s; white-space: nowrap;
+  background: rgba(30,144,255,.06);
+  color: #6ab8e8;
+  transition: all .25s;
+  white-space: nowrap;
+  border-radius: 4px;
 }
 #azure-codex-root .sao-sync-universe-btn:hover {
-  border-color: #33ccff; color: #fff;
-  box-shadow: 0 0 10px rgba(51,204,255,.3);
+  border-color: #33ccff;
+  color: #fff;
+  box-shadow: 0 0 14px rgba(51,204,255,.35);
   background: rgba(51,204,255,.12);
 }
 #azure-codex-root .sao-skill-hint {
   font-family: 'Cormorant Garamond', serif;
-  font-size: .55rem; color: var(--tx3);
+  font-size: .55rem;
+  color: var(--tx3);
   font-style: italic;
 }
-#azure-codex-root .sao-skill-remove {
-  width: 20px; height: 20px;
-  font-size: .7rem; font-weight: 700; line-height: 1;
-  border: 1px solid transparent;
-  background: transparent; color: var(--tx3);
-  cursor: pointer; display: flex;
-  align-items: center; justify-content: center;
-  flex-shrink: 0; transition: all .2s;
-  padding: 0;
+#azure-codex-root .sao-next-unlock {
+  font-family: 'Cinzel', serif;
+  font-size: .6rem;
+  letter-spacing: .06em;
+  color: var(--tx2);
+  text-align: center;
+  padding: .5rem .6rem;
+  margin-top: .3rem;
+  background: rgba(255,255,255,.02);
+  border: 1px dashed var(--ash2);
+  border-radius: 4px;
 }
-#azure-codex-root .sao-skill-remove:hover {
-  border-color: #e57373; color: #ef5350;
-  box-shadow: 0 0 6px rgba(229,115,115,.3);
+
+/* ═══════════════════════════════════════════
+   DISABLED STATE
+   ═══════════════════════════════════════════ */
+
+#azure-codex-root.ac-disabled .ac-body {
+  opacity: .35;
+  pointer-events: none;
+  filter: grayscale(.5);
+}
+#azure-codex-root.ac-disabled .ac-footer {
+  opacity: .5;
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE — MOBILE (≤768px)
+   ═══════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  #azure-codex-float-btn {
+    bottom: 12px;
+    right: 50%;
+    transform: translateX(50%);
+    padding: 14px 24px;
+    font-size: .85rem;
+    border-radius: 40px;
+  }
+  #azure-codex-float-btn:hover {
+    transform: translateX(50%) translateY(-2px);
+  }
+
+  #azure-codex-root {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    transform-origin: bottom center;
+  }
+  #azure-codex-root.show-overlay {
+    transform: translateY(0) scale(1);
+  }
+
+  #azure-codex-root .ac-body {
+    max-height: calc(100vh - 140px);
+    max-height: calc(100dvh - 140px);
+  }
+
+  /* Larger touch targets */
+  #azure-codex-root .ac-tab {
+    padding: .75rem .4rem;
+    font-size: .6rem;
+    min-width: 100px;
+    min-height: 44px;
+  }
+  #azure-codex-root .ac-card {
+    padding: 1rem;
+  }
+  #azure-codex-root .ac-card-name {
+    font-size: 1rem;
+  }
+  #azure-codex-root .ac-btn {
+    padding: .5rem 1rem;
+    font-size: .6rem;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #azure-codex-root .ac-close-btn {
+    padding: .4rem .7rem;
+    font-size: .55rem;
+    min-height: 36px;
+  }
+  #azure-codex-root .sao-stat-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+  #azure-codex-root .sao-skill-item {
+    padding: .55rem .6rem;
+    min-height: 44px;
+  }
+  #azure-codex-root .sao-skill-rank {
+    width: 28px;
+    height: 28px;
+    font-size: .8rem;
+  }
+  #azure-codex-root .sao-skill-remove {
+    width: 32px;
+    height: 32px;
+    font-size: .85rem;
+  }
+  #azure-codex-root .ac-inv-use-btn,
+  #azure-codex-root .ac-inv-drop-btn {
+    padding: .35rem .6rem;
+    font-size: .5rem;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+  #azure-codex-root .ac-inv-item {
+    padding: .55rem .6rem;
+    min-height: 44px;
+  }
+  #azure-codex-root .sao-skill-request-btn,
+  #azure-codex-root .sao-sync-universe-btn {
+    padding: .5rem 1rem;
+    font-size: .62rem;
+    min-height: 44px;
+  }
+  #azure-codex-root .sao-bar {
+    height: 14px;
+  }
+  #azure-codex-root .sao-stat-row {
+    padding: .6rem;
+  }
+  #azure-codex-root .ac-grid {
+    grid-template-columns: 1fr;
+  }
+  #azure-codex-root .ac-toggle {
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+  }
+  #azure-codex-root .ac-toggle::after {
+    width: 16px;
+    height: 16px;
+  }
+  #azure-codex-root .ac-toggle.active::after {
+    left: 22px;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE — LARGE DESKTOP (≥1200px)
+   ═══════════════════════════════════════════ */
+
+@media (min-width: 1200px) {
+  #azure-codex-root {
+    max-width: 680px;
+  }
 }
