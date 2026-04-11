@@ -2512,7 +2512,12 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             <span class="ac-ornament tl">✦</span><span class="ac-ornament tr">✦</span><span class="ac-ornament bl">✦</span><span class="ac-ornament br">✦</span>
         </div>`;
         document.body.appendChild(root);
-        btn.addEventListener('click', () => root.classList.toggle('show-overlay'));
+
+        // ── Button click: reset mobile position then toggle ──
+        btn.addEventListener('click', () => {
+            this._resetMobileOverlayPosition(root);
+            root.classList.toggle('show-overlay');
+        });
         document.getElementById('ac-close-btn')?.addEventListener('click', () => root.classList.remove('show-overlay'));
         document.getElementById('ac-reset-btn')?.addEventListener('click', () => this.confirmReset());
 
@@ -2551,14 +2556,17 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         let hasMoved = false;
         let startX = 0, startY = 0;
         let elStartX = 0, elStartY = 0;
-        const DRAG_THRESHOLD = 8; // px before drag activates (larger for touch)
+        const DRAG_THRESHOLD = 8;
 
-        // Restore saved position
+        const isMobile = () => window.innerWidth <= 768;
+
+        // Restore saved position — ONLY on desktop
+        // On mobile, button uses CSS positioning (bottom-center with higher bottom)
         try {
             const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
-                // Wait for element to be in DOM and have dimensions
+            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number' && !isMobile()) {
                 requestAnimationFrame(() => {
+                    if (isMobile()) return; // Double-check after rAF
                     const w = el.offsetWidth || 140;
                     const h = el.offsetHeight || 44;
                     const clamped = this._clampToViewport(saved.x, saved.y, w, h);
@@ -2578,7 +2586,6 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
         const onStart = (e) => {
             // For the float button itself, allow drag on the button
-            // For other elements, don't drag from interactive children
             if (!isFloatBtn) {
                 const tag = /** @type {HTMLElement} */ (e.target).tagName;
                 if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'].includes(tag)) return;
@@ -2606,7 +2613,6 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
             if (!hasMoved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
             hasMoved = true;
-
             e.preventDefault();
 
             const newX = elStartX + dx;
@@ -2626,11 +2632,22 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             el.style.transition = '';
 
             if (hasMoved) {
-                // Save position
                 const rect = el.getBoundingClientRect();
-                try {
-                    localStorage.setItem(storageKey, JSON.stringify({ x: rect.left, y: rect.top }));
-                } catch { /* quota full */ }
+                // Only save position on desktop
+                if (!isMobile()) {
+                    try {
+                        localStorage.setItem(storageKey, JSON.stringify({ x: rect.left, y: rect.top }));
+                    } catch { /* quota full */ }
+                } else {
+                    // On mobile after drag, reset to CSS defaults
+                    if (isFloatBtn) {
+                        el.style.left = '';
+                        el.style.top = '';
+                        el.style.right = '';
+                        el.style.bottom = '';
+                        el.style.transform = '';
+                    }
+                }
             }
         };
 
@@ -2639,7 +2656,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onEnd);
 
-        // Touch events — touchstart must NOT be passive so we can track it
+        // Touch events
         el.addEventListener('touchstart', onStart, { passive: true });
         document.addEventListener('touchmove', onMove, { passive: false });
         document.addEventListener('touchend', onEnd);
@@ -2653,7 +2670,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                     hasMoved = false;
                     return false;
                 }
-            }, true); // capture phase — fires before the normal click handler
+            }, true);
         }
     }
 
@@ -2671,7 +2688,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         const isMobile = () => window.innerWidth <= 768;
 
         const onStart = (e) => {
-            if (isMobile()) return;
+            if (isMobile()) return; // Never drag panel on mobile
             const tag = /** @type {HTMLElement} */ (e.target).tagName;
             if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'].includes(tag)) return;
             if (/** @type {HTMLElement} */ (e.target).closest('.ac-toggle-wrap, .ac-close-btn, .ac-toggle')) return;
@@ -2729,7 +2746,27 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         };
     }
 
-    toggleOverlay() { document.getElementById('azure-codex-root')?.classList.toggle('show-overlay'); }
+    /** Reset inline position styles on the overlay for mobile so CSS takes over */
+    _resetMobileOverlayPosition(root) {
+        if (window.innerWidth > 768) return;
+        // Clear any inline styles that would override the CSS bottom-sheet positioning
+        root.style.left = '';
+        root.style.top = '';
+        root.style.right = '';
+        root.style.bottom = '';
+        root.style.transform = '';
+        root.style.width = '';
+        root.style.maxWidth = '';
+        root.style.maxHeight = '';
+    }
+
+    toggleOverlay() {
+        const root = document.getElementById('azure-codex-root');
+        if (root) {
+            this._resetMobileOverlayPosition(root);
+            root.classList.toggle('show-overlay');
+        }
+    }
 
     _updateToggleUI() {
         const enabled = extension_settings[META_KEY]?.enabled !== false;

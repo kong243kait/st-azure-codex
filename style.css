@@ -94,7 +94,7 @@
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 9999;
+  z-index: 31000;
   background: linear-gradient(135deg, #040a14 0%, #071224 100%);
   color: #6ab8e8;
   border: 1px solid rgba(30,144,255,.3);
@@ -139,7 +139,7 @@
   position: fixed;
   bottom: 80px;
   right: 20px;
-  z-index: 9998;
+  z-index: 30000;
   width: calc(100vw - 40px);
   max-width: 620px;
   max-height: calc(100vh - 100px);
@@ -1530,7 +1530,7 @@
 
 @media (max-width: 768px) {
   #azure-codex-float-btn {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     right: auto;
     left: 50%;
     transform: translateX(-50%);
