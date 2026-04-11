@@ -92,8 +92,11 @@
 
 #azure-codex-float-btn {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  /* NOTE: top/left are set by JS (_positionFloatBtn) because
+     SillyTavern's <html> has perspective:1000px which breaks
+     CSS bottom/right positioning for fixed elements. */
+  top: auto;
+  left: auto;
   z-index: 31000;
   background: linear-gradient(135deg, #040a14 0%, #071224 100%);
   color: #6ab8e8;
@@ -137,13 +140,12 @@
   border-radius: 12px;
 
   position: fixed;
-  bottom: 80px;
-  right: 20px;
+  /* NOTE: top/left/width/maxHeight are set by JS (_positionOverlay) because
+     SillyTavern's <html> has perspective:1000px which breaks
+     CSS bottom/right positioning for fixed elements. */
+  top: 0;
+  left: 0;
   z-index: 30000;
-  width: calc(100vw - 40px);
-  max-width: 620px;
-  max-height: calc(100vh - 100px);
-  max-height: calc(100dvh - 100px);
   margin: 0;
   overflow: hidden;
   display: flex;
@@ -158,7 +160,7 @@
   pointer-events: none;
   transform: translateY(20px) scale(0.96);
   transform-origin: bottom right;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 #azure-codex-root.show-overlay {
   opacity: 1;
@@ -1512,6 +1514,92 @@
 }
 
 /* ═══════════════════════════════════════════
+   SKILL TREE MODAL (callGenericPopup)
+   Forces dark theme regardless of ST theme
+   ═══════════════════════════════════════════ */
+
+.ac-skill-tree-modal {
+  background: #060e1a !important;
+  color: #d0e6f0 !important;
+  padding: 1rem !important;
+  border-radius: 6px;
+  border: 1px solid #182a3d;
+}
+.ac-tree-list > button {
+  display: block;
+  width: 100%;
+  color: #d0e6f0 !important;
+  font-family: 'Cinzel', serif;
+  background: #0d2238 !important;
+  border: 1px solid #182a3d !important;
+  text-align: left;
+  padding: 0.8rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+}
+.ac-tree-list > button:hover {
+  background: rgba(51,204,255,.08) !important;
+  border-color: rgba(51,204,255,.3) !important;
+}
+.ac-tree-list > button.ac-tree-unlock-btn {
+  cursor: pointer !important;
+}
+.ac-tree-list > button.ac-tree-unlock-btn:hover {
+  background: rgba(50,255,100,.08) !important;
+  border-color: #55ff66 !important;
+  box-shadow: 0 0 12px rgba(50,255,100,.2);
+}
+.ac-skill-tree-modal .ac-tree-skill-rank {
+  font-family: 'Cinzel', serif;
+  color: #ffd740;
+  font-size: 1rem;
+  min-width: 25px;
+  font-weight: 700;
+}
+.ac-skill-tree-modal .ac-tree-skill-name {
+  font-family: 'Cinzel', serif;
+  color: #d0e6f0;
+  font-size: 0.9rem;
+  letter-spacing: .06em;
+}
+.ac-skill-tree-modal .ac-tree-skill-desc {
+  font-family: 'Sarabun', serif;
+  font-size: 0.75rem;
+  color: #8aa8c0;
+  line-height: 1.4;
+}
+.ac-skill-tree-modal .ac-tree-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 0.6rem;
+  padding: 0.1rem 0.4rem;
+  border-bottom-left-radius: 4px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.ac-skill-tree-modal .ac-tree-badge.learned {
+  background: rgba(51,204,255,0.2);
+  color: #33ccff;
+}
+.ac-skill-tree-modal .ac-tree-badge.locked {
+  background: rgba(255,50,50,0.2);
+  color: #ff5555;
+}
+.ac-skill-tree-modal .ac-tree-badge.unlockable {
+  background: rgba(50,255,100,0.2);
+  color: #55ff66;
+}
+.ac-skill-tree-modal hr {
+  border: none;
+  border-top: 1px solid #182a3d;
+  margin: .6rem 0;
+}
+
+/* ═══════════════════════════════════════════
    DISABLED STATE
    ═══════════════════════════════════════════ */
 
@@ -1529,27 +1617,15 @@
    ═══════════════════════════════════════════ */
 
 @media (max-width: 768px) {
+  /* Button: positioned by JS _positionFloatBtn() */
   #azure-codex-float-btn {
-    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-    right: auto;
-    left: 50%;
-    transform: translateX(-50%);
     padding: 14px 24px;
     font-size: .85rem;
     border-radius: 40px;
   }
-  /* When button has been dragged (has explicit left/top from JS)
-     the transform is set to 'none' by JS so it won't re-center */
 
+  /* Panel: positioned by JS _positionOverlay() */
   #azure-codex-root {
-    bottom: 0;
-    right: 0;
-    left: 0;
-    top: auto;
-    width: 100%;
-    max-width: 100%;
-    max-height: 80vh;
-    max-height: 80dvh;
     border-radius: 16px 16px 0 0;
     border-bottom: none;
     transform-origin: bottom center;

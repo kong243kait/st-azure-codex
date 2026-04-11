@@ -163,6 +163,7 @@ class DataEngine {
                 levelName: 'Level',
                 levelDisplay: '1',
                 expName: 'EXP',
+                goldName: 'Gold',
                 statNames: /** @type {string[]} */ (['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'])
             }
         };
@@ -211,15 +212,16 @@ class DataEngine {
         const gained = (newLevel - p.level) * POINTS_PER_LEVEL;
         p.statPoints += gained;
         p.level = newLevel;
+        this.recalcDerived();
+        // Full heal on level-up (use the NEWLY calculated max values)
         p.hp = p.hpMax;
         p.mp = p.mpMax;
-        this.recalcDerived();
         return gained;
     }
 
     allocateStat(name, amt = 1) {
         const p = this.player;
-        if (!this.player.universe.statNames.includes(name) || p.statPoints < amt) return false;
+        if (!this.player.universe?.statNames?.includes(name) || p.statPoints < amt) return false;
         p.stats[name] += amt;
         p.statPoints -= amt;
         this.recalcDerived();
@@ -228,7 +230,7 @@ class DataEngine {
 
     deallocateStat(name, amt = 1) {
         const p = this.player;
-        if (!this.player.universe.statNames.includes(name) || p.stats[name] <= 1) return false;
+        if (!this.player.universe?.statNames?.includes(name) || p.stats[name] <= 1) return false;
         const actual = Math.min(amt, p.stats[name] - 1);
         p.stats[name] -= actual;
         p.statPoints += actual;
@@ -411,131 +413,80 @@ class DataEngine {
         }
         const p = this.player;
         const statList = p.universe?.statNames || SAO_STATS;
+        const expName = p.universe?.expName || 'EXP';
+        const goldName = p.universe?.goldName || 'Gold';
+        const lvlName = p.universe?.levelName || 'Level';
         
-        // ── Build comprehensive status block ──
-        let text = `[RPG Tracker — Live Player Status]\n`;
-        text += `${p.universe?.levelName || 'Level'}: ${p.universe?.levelDisplay || p.level || 1}\n`;
-        text += `HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | ${p.universe?.expName || 'EXP'}: ${p.exp}/${p.expMax} | ${p.universe?.goldName || 'Gold'}: ${p.gold}\n`;
+        // ── Build compact JSON-based status ──
+        const statsObj = {};
+        for (const k of statList) statsObj[k] = p.stats[k] || 0;
         
-        // KO/Death state
-        if (p.hp <= 0) {
-            text += `⚠ PLAYER IS UNCONSCIOUS/KO (HP=0). The player CANNOT fight, cast spells, or take any active action until healed or revived.\n`;
-        } else if (p.hp <= p.hpMax * 0.2) {
-            text += `⚠ PLAYER IS CRITICALLY INJURED (HP < 20%). Physical actions should be weakened.\n`;
+        const playerData = {
+            lv: p.universe?.levelDisplay || p.level || 1,
+            hp: `${p.hp}/${p.hpMax}`,
+            mp: `${p.mp}/${p.mpMax}`,
+            exp: `${p.exp}/${p.expMax}`,
+            gold: p.gold,
+            stats: statsObj
+        };
+        
+        if (p.conditions?.length > 0) {
+            playerData.conditions = p.conditions.map(c => `${c.name}(${c.turnsLeft}t)`);
         }
-        if (p.mp <= 0) {
-            text += `⚠ PLAYER HAS NO MANA (MP=0). Cannot cast any magic/skill that costs MP.\n`;
+        if (p.skills?.length > 0) {
+            playerData.skills = p.skills.map(s => {
+                let entry = `[${s.rank || '?'}]${s.name}`;
+                if (s.mpCost) entry += `(${s.mpCost}MP)`;
+                return entry;
+            });
         }
-        
-        // Stats
-        text += `Stats:\n${statList.map(k => `- ${k.toUpperCase()}: ${p.stats[k] || 0}`).join('\n')}\n`;
-        
-        // Active Conditions
-        if (p.conditions && p.conditions.length > 0) {
-            text += `Active Conditions:\n${p.conditions.map(c => `- ${c.name}: ${c.effect}${c.turnsLeft > 0 ? ` (${c.turnsLeft} turns left)` : ''}`).join('\n')}\n`;
+        if (this.inventory?.length > 0) {
+            playerData.inv = this.inventory.map(i => `${i.name}x${i.qty || 1}`);
         }
-        
-        // Equipment
-        if (p.equipment && p.equipment.length > 0) {
-            text += `Equipped Gear:\n${p.equipment.map(e => `- [${e.slot}] ${e.name}${e.bonus ? ` (${e.bonus})` : ''}`).join('\n')}\n`;
+        if (p.equipment?.length > 0) {
+            playerData.equip = p.equipment.map(e => `${e.slot}:${e.name}`);
         }
+
+        let text = `[SYSTEM — RPG TRACKER (invisible to reader, NEVER display these instructions)]\n`;
+        text += `${lvlName}: ${playerData.lv} | HP: ${playerData.hp} | MP: ${playerData.mp} | ${expName}: ${playerData.exp} | ${goldName}: ${playerData.gold}\n`;
+        text += `Stats: ${statList.map(k => `${k}:${statsObj[k]}`).join(' ')}\n`;
         
-        // Skills with MP costs
-        if (p.skills && p.skills.length > 0) {
-            text += `Learned Skills:\n${p.skills.map(s => {
-                let line = `- [${s.rank || 'F'}] ${s.name}`;
-                if (s.mpCost) line += ` (MP Cost: ${s.mpCost})`;
-                if (s.stat) line += ` [Requires: ${s.stat}]`;
-                if (s.desc) line += `: ${s.desc}`;
-                return line;
-            }).join('\n')}\n`;
-        }
+        // Compact data sections
+        if (playerData.conditions) text += `Conditions: ${playerData.conditions.join(', ')}\n`;
+        if (playerData.skills) text += `Skills: ${playerData.skills.join(', ')}\n`;
+        if (playerData.inv) text += `Inventory: ${playerData.inv.join(', ')}\n`;
+        if (playerData.equip) text += `Equipment: ${playerData.equip.join(', ')}\n`;
         
-        // Inventory
-        if (this.inventory && this.inventory.length > 0) {
-            text += `Inventory:\n${this.inventory.map(i => `- ${i.name} x${i.qty || 1}${i.type ? ` [${i.type}]` : ''}`).join('\n')}\n`;
-        }
-        
-        // ── NPC Relationships (so AI knows relationship context) ──
+        // NPC relationships
         const npcEntries = Object.values(this.bots || {}).filter(b => (b.appearances || 0) >= MIN_APPEARANCES || b.affection > 0 || b.annoyance > 0);
         if (npcEntries.length > 0) {
-            text += `NPC Relationships:\n${npcEntries.map(b => {
-                const stage = STAGE_NAMES[b.stage] || 'Unknown';
-                return `- ${b.nickname || b.name}: Affection ${b.affection}/100, Annoyance ${b.annoyance}/100 (${stage})`;
-            }).join('\n')}\n`;
+            text += `NPCs: ${npcEntries.map(b => `${b.nickname || b.name}(❤${b.affection}💢${b.annoyance}/${STAGE_NAMES[b.stage] || '?'})`).join(', ')}\n`;
         }
-        
-        text += `\n[System Policy: STRICT RPG ENFORCEMENT — Stats, Skills, and Inventory MUST affect gameplay.]`;
-        
-        // ── Stat-based action resolution ──
-        text += `\n\n— ACTION RESOLUTION —`;
-        text += `\nWhen the player attempts any significant action (combat, persuasion, crafting, stealth, etc), evaluate their relevant stat:`;
-        for (const stat of statList) {
-            const val = p.stats[stat] || 0;
-            const info = STAT_INFO[stat] || { name: stat, desc: 'Attribute' };
-            text += `\n  ${stat} = ${val} → ${val <= 3 ? 'Very Weak' : val <= 7 ? 'Below Average' : val <= 12 ? 'Average' : val <= 18 ? 'Strong' : val <= 25 ? 'Very Strong' : 'Superhuman'}`;
-        }
-        text += `\nUse these stat values to determine outcomes. Low stats should cause failures/complications. High stats should grant advantages.`;
-        text += `\nMentally roll d20 + relevant stat modifier. Result determines narrative outcome:`;
-        text += `\n  d20+stat < 8 = FAILURE (describe complication). 8-14 = PARTIAL SUCCESS (succeed with cost). 15-22 = CLEAN SUCCESS. 23+ = CRITICAL SUCCESS (bonus effect).`;
-        text += `\nNarrate the stat check naturally without showing dice numbers. Example: "${statList[0]} is low, so the attack misses" or "high ${statList[1]} allows graceful dodge".`;
-        
-        // ── Skill enforcement ──
-        if (p.skills && p.skills.length > 0) {
-            text += `\n\n— SKILL ENFORCEMENT —`;
-            text += `\nThe player can ONLY use skills from the "Learned Skills" list above.`;
-            text += `\nIf the player uses a skill with MP Cost, DEDUCT that MP from their current pool (MP: ${p.mp}/${p.mpMax}).`;
-            text += `\nIf MP is insufficient for a skill, the skill FAILS — narrate magical exhaustion/fizzle.`;
-            text += `\nHigher-rank skills (S > A > B > C > D > F) are proportionally more powerful.`;
-            text += `\nIf the player tries to use a skill NOT in their list, DENY it. Narrate: "...but nothing happens. That technique has not been mastered yet."`;
-        } else {
-            text += `\n\n— NO SKILLS LEARNED —`;
-            text += `\nThe player has NO learned skills. They can only perform basic physical actions and cannot use any named techniques.`;
-        }
-        
-        // ── HP/Damage enforcement ──
-        text += `\n\n— HP & DAMAGE —`;
-        text += `\nCurrent HP: ${p.hp}/${p.hpMax}. When the player takes damage, ALWAYS include a status update at the end of your reply.`;
+
+        // ── Critical state warnings (only when needed) ──
         if (p.hp <= 0) {
-            text += `\n‼ THE PLAYER IS UNCONSCIOUS (HP=0). They CANNOT act, fight, move, or speak coherently. ONLY narrate them as incapacitated until healed/revived.`;
+            text += `⚠ PLAYER KO (HP=0) — CANNOT act/fight/speak until healed.\n`;
         } else if (p.hp <= p.hpMax * 0.2) {
-            text += `\n⚠ CRITICALLY INJURED (HP < 20%). All physical actions are severely weakened. Player struggles, bleeds, or collapses.`;
-        } else if (p.hp <= p.hpMax * 0.5) {
-            text += `\n⚠ WOUNDED (HP < 50%). Player shows visible injuries. Reduce combat effectiveness.`;
+            text += `⚠ CRITICAL HP (<20%) — severely weakened.\n`;
+        }
+        if (p.mp <= 0 && p.skills?.length > 0) {
+            text += `⚠ NO MP — magic/skills that cost MP will FAIL.\n`;
         }
 
-        // ── Inventory enforcement ──
-        if (this.inventory && this.inventory.length > 0) {
-            text += `\n\n— INVENTORY —`;
-            text += `\nThe player can only USE items from their inventory. If they try to use an item they don't have, deny it.`;
-            text += `\nWhen an item is used/consumed, mention it so the tracker can deduct it.`;
-        } else {
-            text += `\n\n— EMPTY INVENTORY —`;
-            text += `\nThe player has NO items. They cannot use potions, scrolls, or any consumable.`;
-        }
-
-        // ── Level scaling ──
-        text += `\n\n— LEVEL SCALING —`;
-        text += `\nPlayer Level: ${p.level}. Enemies and challenges should be scaled near this level.`;
-        text += `\nLevel 1-5: Weak enemies (goblins, slimes). Level 6-15: Mid-tier threats. Level 16-30: Elite enemies. Level 31+: Legendary challenges.`;
-        text += `\nThe player should NOT easily defeat enemies far above their level.`;
+        // ── Compact rules (essential only) ──
+        text += `\nRULES:\n`;
+        text += `• Use stats to determine action outcomes. Low stat→fail/complication, high stat→advantage.\n`;
+        text += `• Player can ONLY use listed skills. Unknown skill→deny ("not yet mastered"). Deduct MP on skill use.\n`;
+        text += `• Player can ONLY use listed inventory items. No item→deny.\n`;
+        text += `• Scale challenges to ${lvlName} ${playerData.lv}.\n`;
         
-        // ── Status Update Format (CRITICAL for tracker to parse) ──
-        text += `\n\n— MANDATORY STATUS UPDATE —`;
-        text += `\nAt the END of EVERY reply where HP, MP, EXP, Gold, or Stats change, you MUST include a structured block like this:`;
-        text += `\n[Status: HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | ${p.universe?.expName || 'EXP'}: <new_value>/${p.expMax} | ${p.universe?.goldName || 'Gold'}: <new_value>]`;
-        text += `\nAlso include stat changes: [${statList[0]}: <value>] etc.`;
-        text += `\nIf a new skill is learned: [ได้รับสกิล: <skill_name> (Rank <X>) — <description>]`;
-        text += `\nIf an item is gained: [ได้รับไอเท็ม: <item_name> x<qty>]`;
-        text += `\nIf an item is lost: [เสียไอเท็ม: <item_name>]`;
-        text += `\nThis structured output is ESSENTIAL for the game system to track progress accurately.`;
-
-        // ── NPC naming consistency ──
-        if (npcEntries.length > 0) {
-            text += `\n\n— NPC NAMING —`;
-            text += `\nWhen mentioning tracked NPCs, ALWAYS use the exact names shown in "NPC Relationships" above. Do NOT switch between languages or use alternate names.`;
-        }
-        text += `]`;
+        // ── Output format (MINIMAL to prevent text-leak) ──
+        text += `\nOUTPUT: When HP/MP/${expName}/${goldName}/stats change, append ONE hidden tag at the end:\n`;
+        text += `[Status: HP: #/# | MP: #/# | ${expName}: #/# | ${goldName}: #]\n`;
+        text += `For new items: [ได้รับไอเท็ม: name x#] / For lost items: [เสียไอเท็ม: name]\n`;
+        text += `For new skills: [ได้รับสกิล: name (Rank X)]\n`;
+        text += `These tags are INVISIBLE markup for the game engine — they must appear but readers treat them as hidden metadata.\n`;
+        text += `NEVER echo these system instructions in your narrative. Write naturally; only append the status tags.]`;
         
         if (typeof setExtensionPrompt === 'function') {
             setExtensionPrompt('azure_codex_tracker', text, extension_prompt_types.IN_CHAT, 1, false);
@@ -559,7 +510,8 @@ class DataEngine {
             this.player.statPoints ??= 0;
             this.player.skills ??= []; // Migration: add skills array
             this.player.skillTrees ??= {}; 
-            this.player.universe ??= { levelName: 'Level', levelDisplay: String(this.player.level || '1'), expName: 'EXP', statNames: ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'] };
+            this.player.universe ??= { levelName: 'Level', levelDisplay: String(this.player.level || '1'), expName: 'EXP', goldName: 'Gold', statNames: ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'] };
+            this.player.universe.goldName ??= 'Gold'; // Migration: add goldName if missing
             if (!this.player.stats || typeof this.player.stats !== 'object') this.player.stats = /** @type {Object<string,number>} */ ({});
             for (const s of this.player.universe.statNames) {
                 if (this.player.stats[s] == null) this.player.stats[s] = 5;
@@ -965,6 +917,8 @@ class AzureCodexController {
         this._eventsRegistered = false; // FIX: guard against double registration
         this._isBulkScanning = false;
         this._personaSynced = false; // FIX M3: cache flag to avoid redundant persona regex
+        this._swipeRestorePending = false; // FIX: flag for swipe restore
+        this._lastContentFingerprint = ''; // FIX: content-based dedup replaces time-based debounce
         this.lastProcessedIdx = -1;
 
         // FIX: UIRenderer uses callbacks, no global reference
@@ -1030,7 +984,7 @@ class AzureCodexController {
                     <div style="font-size:.85rem;color:${info.color};margin:.4rem 0 .8rem">Current: <b>${val}</b></div>
                     <hr style="border:none;border-top:1px solid #182a3d;margin:.6rem 0">
                     <div style="font-size:.82rem;color:#6ab8e8;letter-spacing:.12em;margin-bottom:.6rem">⚡ ${stat} SKILL TREE</div>
-                    <div style="display:flex; flex-direction:column; gap:0.5rem; max-height: 400px; overflow-y:auto; padding-right:5px;">`;
+                    <div class="ac-tree-list" style="display:flex; flex-direction:column; gap:0.5rem; max-height: 400px; overflow-y:auto; padding-right:5px;">`;
 
                 if (!treeTokens || treeTokens.length === 0) {
                     html += `<div style="font-size:.8rem;color:#ff8888;padding:1rem 0;line-height:1.5;">ยังไม่มีระเบียนผังทักษะสำหรับคลาสของคุณ<br><br><span style="color:#8aa8c0;font-size:0.75rem;">กรุณากดปุ่ม <b>"✨ ขอสกิลใหม่"</b> ในหน้าต่าง Tracker<br>เพื่อให้ระบบประมวลผลผังทักษะทั้งหมดก่อนครับ</span></div>`;
@@ -1041,20 +995,23 @@ class AzureCodexController {
                         const isLocked = !isLearned && (val < sk.req);
                         
                         const rc = RANK_COLORS[sk.rank?.toUpperCase()] || '#8aa8c0';
-                        const bgCol = isLearned ? 'rgba(51,204,255,.05)' : (isLocked ? 'rgba(0,0,0,0.4)' : '#0d2238');
-                        const borderCol = isLearned ? `${rc}55` : (isLocked ? '#111' : '#33ccff');
-                        const opacity = isLocked ? '0.5' : '1';
-                        const btnState = isUnlockable ? `class="ac-tree-unlock-btn" data-idx="${i}" style="cursor:pointer;"` : `style="pointer-events:none;"`;
+                        const opacity = isLocked ? 'opacity:0.5;' : '';
+                        const learnedBg = isLearned ? 'background:rgba(51,204,255,.05) !important;' : '';
+                        const lockedBg = isLocked ? 'background:rgba(0,0,0,0.4) !important;' : '';
+                        const btnClass = isUnlockable ? `class="ac-tree-unlock-btn" data-idx="${i}"` : '';
 
-                        html += `<button ${btnState} style="text-align:left; background:${bgCol}; border:1px solid ${borderCol}; padding:0.8rem; border-radius:4px; transition:all 0.2s; opacity:${opacity}; position:relative; overflow:hidden;">
-                            ${isLearned ? `<div style="position:absolute; top:0; right:0; background:rgba(51,204,255,0.2); color:#33ccff; font-size:0.6rem; padding:0.1rem 0.4rem; border-bottom-left-radius:4px;">LEARNED</div>` : ''}
-                            ${isLocked ? `<div style="position:absolute; top:0; right:0; background:rgba(255,50,50,0.2); color:#ff5555; font-size:0.6rem; padding:0.1rem 0.4rem; border-bottom-left-radius:4px;">REQ: ${stat} ${sk.req}</div>` : ''}
-                            ${isUnlockable ? `<div style="position:absolute; top:0; right:0; background:rgba(50,255,100,0.2); color:#55ff66; font-size:0.6rem; padding:0.1rem 0.4rem; border-bottom-left-radius:4px; font-weight:bold;">CLICK TO UNLOCK</div>` : ''}
+                        let badgeHtml = '';
+                        if (isLearned) badgeHtml = `<div class="ac-tree-badge learned">LEARNED</div>`;
+                        else if (isLocked) badgeHtml = `<div class="ac-tree-badge locked">REQ: ${stat} ${sk.req}</div>`;
+                        else if (isUnlockable) badgeHtml = `<div class="ac-tree-badge unlockable">CLICK TO UNLOCK</div>`;
+
+                        html += `<button ${btnClass} style="${opacity}${learnedBg}${lockedBg}">
+                            ${badgeHtml}
                             <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
-                                <span style="font-family:'Cinzel',serif; color:#ffd740; font-size:1rem; min-width:25px;">${sk.rank}</span>
-                                <span style="font-family:'Cinzel',serif; color:#d0e6f0; font-size:0.9rem;">${sk.name}</span>
+                                <span class="ac-tree-skill-rank" style="color:${rc}">${UIRenderer.esc(sk.rank)}</span>
+                                <span class="ac-tree-skill-name">${UIRenderer.esc(sk.name)}</span>
                             </div>
-                            <div style="font-size:0.75rem; color:#8aa8c0; line-height:1.4;">${sk.desc}</div>
+                            <div class="ac-tree-skill-desc">${UIRenderer.esc(sk.desc)}</div>
                         </button>`;
                     });
                 }
@@ -1096,11 +1053,11 @@ class AzureCodexController {
                 const skill = this.data.player.skills.find(s => s.name === name);
                 if (!skill) return;
                 const rc = RANK_COLORS[skill.rank?.toUpperCase()] || '#8aa8c0';
-                const html = `<div style="font-family:'Cinzel',serif;text-align:center;padding:.5rem 0">
+                const html = `<div class="ac-skill-tree-modal" style="text-align:center">
                     <div style="font-size:1.6rem;margin-bottom:.3rem;color:${rc}">⚡</div>
                     <div style="font-size:1.1rem;color:${rc};letter-spacing:.15em;font-weight:700">${UIRenderer.esc(skill.name)}</div>
                     <div style="font-size:.85rem;color:#8aa8c0;margin:.2rem 0">[ Rank: ${UIRenderer.esc(skill.rank || '?')} ]</div>
-                    <hr style="border:none;border-top:1px solid #182a3d;margin:.6rem 0">
+                    <hr>
                     <div style="font-size:.9rem;color:#d0e6f0;line-height:1.5;text-align:left;padding:0 .5rem">
                         ${UIRenderer.esc(skill.desc || 'ไม่มีคำอธิบายสกิล')}
                     </div>
@@ -1221,12 +1178,13 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                             this.data.player.skillTrees = {};
                             this.data.player.skills = [];
                             
-                            // Preserve progression data
+                            // Recalculate derived stats (hpMax/mpMax) from new stat values
+                            this.data.recalcDerived();
+                            
+                            // Preserve progression data, capped to new maximums
                             this.data.player.gold = oldGold;
-                            this.data.player.hp = oldHp;
-                            this.data.player.hpMax = oldHpMax;
-                            this.data.player.mp = oldMp;
-                            this.data.player.mpMax = oldMpMax;
+                            this.data.player.hp = Math.min(oldHp, this.data.player.hpMax);
+                            this.data.player.mp = Math.min(oldMp, this.data.player.mpMax);
                             this.data.player.exp = oldExp;
                             this.data.player.expMax = oldExpMax;
                             
@@ -1277,7 +1235,6 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                 }
 
                 const btn = document.querySelector('.sao-skill-request-btn');
-                const oldText = btn ? btn.innerHTML : '';
                 if (btn) {
                     btn.innerHTML = '⏳ Generating Class Tree...';
                     // @ts-ignore
@@ -1293,101 +1250,145 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                     const personaStr = pUser?.persona_description || String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
                     const statArray = this.data.player.universe?.statNames || ['STR','AGI','VIT','INT','DEX','LUK'];
 
+                    // ── JSON-based prompt (same approach as Sync Universe for reliability) ──
+                    const exampleSkills = {};
+                    exampleSkills[statArray[0]] = [
+                        {"name":"Power Slash","rank":"F","req":10,"desc":"ฟาดคลื่นดาบโจมตีศัตรู"},
+                        {"name":"War Cry","rank":"C","req":30,"desc":"กระตุ้นพลังให้ตัวเองในการต่อสู้"},
+                        {"name":"Titan Strike","rank":"A","req":50,"desc":"ทุบพื้นสร้างแผ่นดินไหวโจมตีวงกว้าง"}
+                    ];
+
                     const prompt = `[System note: Evaluate the User's Persona.
 Persona: ${personaStr}
-Task: Invent an entire RPG Class Skill Tree tailored to this persona. 
-Generate exactly 3 unlockable skills for EACH of the 6 core stats (${statArray.join(', ')}).
-For each skill, specify a Rank (F to S) and a stat requirement threshold (10, 30, or 50).
-Use exactly this format per skill (start each with "Skill:"):
-Skill: [Skill Name] (Rank [F to S]) [Req: XX [STAT TAG]] - [Thai Description]
+Task: Generate an RPG Class Skill Tree tailored to this persona.
+Create exactly 3 skills for EACH of these 6 stats: ${statArray.join(', ')} (18 total).
+Each skill needs: name, rank (F/D/C/B/A/S), req (10, 30, or 50), desc (short Thai).
 
-Example:
-Skill: Power Slash (Rank F) [Req: 10 ${statArray[0]}] - ฟาดคลื่นดาบโจมตีศัตรู
-Skill: Swift Step (Rank C) [Req: 30 ${statArray[1]}] - แดชหลบการโจมตีอย่างรวดเร็ว
-Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
+Output MUST be exactly valid JSON, no markdown formatting, no conversational text.
+Format exactly like this example:
+${JSON.stringify(exampleSkills, null, 0)}
+
+You must provide EXACTLY 3 skills per stat, 18 skills total.
+Keys must be exactly: ${statArray.map(s => `"${s}"`).join(', ')}
+Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothing else!]`;
 
                     const reply = await generateQuietPrompt({ quietPrompt: prompt });
-                    
-                    // FIX: Changed [^\n*\[\](] to [^\n*] so the regex can match
-                    // the expected format: Skill: Name (Rank X) [Req: Y STAT] - desc
-                    // The rank/req blocks are extracted and cleaned up by later code
-                    const singleGainRx = /(?:Skill|สกิล|ทักษะ)[\s:：!\-]*\**([^\n*]+?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
-                    const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
-                    // Updated Req Rx to match the first 3-4 chars of stat nicely
-                    const reqRx = /(?:Req(?:uires?|uirement)?|ต้องการ|Require)[^\d]*(\d+)\s*([A-Za-z]{3,4})/i;
 
                     if (!this.data.player.skillTrees) this.data.player.skillTrees = {};
-
-                    let m;
-                    let parsedCount = 0;
-                    
                     for (const s of statArray) {
                         this.data.player.skillTrees[s] = [];
                     }
 
-                    while ((m = singleGainRx.exec(reply)) !== null) {
-                        let rawName = m[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
-                        // FIX: Strip any leftover (Rank...) [Req...] blocks from name
-                        rawName = rawName.replace(/\s*\(Rank\s*[^)]*\)/gi, '').replace(/\s*\[Req[^\]]*\]/gi, '').trim();
-                        let desc = (m[2] || '').trim();
-                        
-                        let reqVal = 10;
-                        let targetStat = statArray[0];
-                        
-                        const reqMatch = desc.match(reqRx) || rawName.match(reqRx);
-                        if (reqMatch) {
-                            reqVal = parseInt(reqMatch[1]);
-                            targetStat = reqMatch[2].toUpperCase().substring(0,4);
-                            desc = desc.replace(reqMatch[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
-                            rawName = rawName.replace(reqMatch[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
-                        } else {
-                            const altStatRx = new RegExp(`(${statArray.join('|')})`, 'i');
-                            const altMatch = desc.match(altStatRx) || rawName.match(altStatRx);
-                            if (altMatch) {
-                                targetStat = altMatch[1].toUpperCase();
+                    let parsedCount = 0;
+
+                    // ── PRIMARY: JSON parse (reliable, same as Sync Universe) ──
+                    try {
+                        let cleanJson = reply.replace(/[\x60]{1,3}(json)?[\x60]*/gi, '').trim();
+                        const firstBrace = cleanJson.indexOf('{');
+                        const lastBrace = cleanJson.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace > firstBrace) {
+                            cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+                        }
+
+                        const parsed = JSON.parse(cleanJson);
+
+                        if (parsed && typeof parsed === 'object') {
+                            for (const stat of statArray) {
+                                const skills = parsed[stat] || parsed[stat.toLowerCase()] || parsed[stat.toUpperCase()];
+                                if (Array.isArray(skills)) {
+                                    for (const sk of skills) {
+                                        const name = (sk.name || '').trim();
+                                        const rank = (sk.rank || '?').toString().toUpperCase().replace(/[^A-Z]/g, '') || '?';
+                                        const req = parseInt(sk.req) || 10;
+                                        const desc = (sk.desc || sk.description || '').trim();
+
+                                        if (name.length > 1 && !/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(name)) {
+                                            this.data.player.skillTrees[stat].push({ name, rank, req, desc });
+                                            parsedCount++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (jsonErr) {
+                        console.debug(LOG_PREFIX, 'JSON parse failed, trying regex fallback...', jsonErr);
+                    }
+
+                    // ── FALLBACK: Regex parse (for non-JSON responses) ──
+                    if (parsedCount === 0) {
+                        console.debug(LOG_PREFIX, 'Falling back to regex skill tree parser');
+
+                        // Match lines like: Skill: Name (Rank X) [Req: Y STAT] - description
+                        const lineRx = /(?:Skill|สกิล|ทักษะ)\s*[:：]\s*(.+)/gim;
+                        const rankRx = /\(?\s*(?:Rank|แรงค์|เกรด|ระดับ)\s*[:：]?\s*([A-Z])\s*\)?/i;
+                        const reqRx = /\[?\s*(?:Req(?:uires?|uirement)?|ต้องการ)\s*[:：]?\s*(\d+)\s+([A-Za-z]{2,4})\s*\]?/i;
+                        const descRx = /\s+[-–—]\s+(.+)$/;
+
+                        let lineMatch;
+                        while ((lineMatch = lineRx.exec(reply)) !== null) {
+                            let line = lineMatch[1].trim().replace(/\*+/g, '');
+
+                            // Extract rank
+                            let rank = '?';
+                            const rm = line.match(rankRx);
+                            if (rm) { rank = rm[1].toUpperCase(); line = line.replace(rm[0], ''); }
+
+                            // Extract req + stat
+                            let reqVal = 10;
+                            let targetStat = statArray[0];
+                            const rqm = line.match(reqRx);
+                            if (rqm) {
+                                reqVal = parseInt(rqm[1]) || 10;
+                                const candidateStat = rqm[2].toUpperCase().substring(0, 4);
+                                if (statArray.includes(candidateStat)) {
+                                    targetStat = candidateStat;
+                                } else {
+                                    // Try fuzzy match
+                                    const found = statArray.find(s => candidateStat.startsWith(s) || s.startsWith(candidateStat));
+                                    if (found) targetStat = found;
+                                }
+                                line = line.replace(rqm[0], '');
                             } else {
-                                continue; 
+                                // Try to find any stat name in the line
+                                const altStatRx = new RegExp(`\\b(${statArray.join('|')})\\b`, 'i');
+                                const altMatch = line.match(altStatRx);
+                                if (altMatch) {
+                                    targetStat = altMatch[1].toUpperCase();
+                                } else {
+                                    continue; // Can't determine stat — skip
+                                }
                             }
-                            
-                            const justReqRx = /(?:Req(?:uires?|uirement)?|ต้องการ|Require)[^\d]*(\d+)/i;
-                            const jr = desc.match(justReqRx) || rawName.match(justReqRx);
-                            if (jr) {
-                                reqVal = parseInt(jr[1]);
-                                desc = desc.replace(jr[0], '');
-                                rawName = rawName.replace(jr[0], '');
+
+                            if (!statArray.includes(targetStat)) continue;
+
+                            // Extract description
+                            let desc = '';
+                            const dm = line.match(descRx);
+                            if (dm) { desc = dm[1].trim(); line = line.replace(dm[0], ''); }
+
+                            // What remains is the skill name
+                            let skillName = line.replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '').trim();
+                            if (skillName.length > 1 && skillName.length < 60 && !/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(skillName)) {
+                                this.data.player.skillTrees[targetStat].push({ name: skillName, rank, req: reqVal, desc });
+                                parsedCount++;
                             }
-                        }
-
-                        if (!statArray.includes(targetStat)) continue;
-
-                        let finalRank = '?';
-                        const innerRm = desc.match(rankRx) || rawName.match(rankRx);
-                        if (innerRm) {
-                            finalRank = innerRm[1].toUpperCase();
-                            desc = desc.replace(innerRm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
-                            rawName = rawName.replace(innerRm[0], '').replace(/^[\s\-:：()\[\]]+|[\s\-:：()\[\]]+$/g, '');
-                        }
-
-                        if (rawName.length > 2 && !/^[\s\d\-—_.,;:!?'"`*~#()\[\]{}|/\\+=@$%^&<>]+$/.test(rawName)) {
-                            this.data.player.skillTrees[targetStat].push({ name: rawName, rank: finalRank, req: reqVal, desc });
-                            parsedCount++;
                         }
                     }
 
                     if (parsedCount > 0) {
                         for (const s of statArray) {
                             if (this.data.player.skillTrees[s]) {
-                                this.data.player.skillTrees[s].sort((a,b) => a.req - b.req);
+                                this.data.player.skillTrees[s].sort((a, b) => a.req - b.req);
                             }
                         }
                         this.saveAndRender();
                         notify('success', `สร้างผังทักษะคลาสสำเร็จ! (${parsedCount} สกิล) กดที่ชื่อสเตตัสใน Tracker ดูได้เลยครับ`, '⚡ Class Tree Generated');
                     } else {
                         notify('error', 'AI ส่งข้อมูลรูปแบบผิด (ทักษะตกหล่น) ลองกดปุ่มขอสกิลใหม่อีกครั้ง!', 'Error', { timeOut: 5000 });
-                        console.log('Class tree parsing failed. Reply was: ', reply);
+                        console.log(LOG_PREFIX, 'Class tree parsing failed. Reply was:', reply);
                     }
                 } catch (err) {
-                    console.error('Skill tree generation error:', err);
+                    console.error(LOG_PREFIX, 'Skill tree generation error:', err);
                     notify('error', 'การเชื่อมต่อกับ AI ล้มเหลว', 'Failed');
                 } finally {
                     // FIX: Re-query button from DOM because saveAndRender() destroys the old one
@@ -1495,8 +1496,8 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
 
                 if ((nameIsThai || nameIsLatin) && namePos !== -1) {
                     for (const [existingKey, existingBot] of Object.entries(this.data.bots)) {
-                        const allNames = [existingBot.name, existingBot.nickname, ...(existingBot.aliases || [])].filter(Boolean);
-                        for (const existing of allNames) {
+                        const botAllNames = [existingBot.name, existingBot.nickname, ...(existingBot.aliases || [])].filter(Boolean);
+                        for (const existing of botAllNames) {
                             const existIsThai = /[\u0E00-\u0E7F]/.test(existing);
                             const existIsLatin = /[A-Za-z]{2,}/.test(existing);
                             // Only merge if cross-language (Thai<->Latin)
@@ -1559,7 +1560,6 @@ Do not output any conversational text. Generate 18 skills total (3 per stat).]`;
             const ctx = getContext();
             if (!ctx.characterId) return;
             const charName = ctx.name2 || ctx.characterId || 'Character';
-            const universeName = this.data.player?.universe?.levelName || 'RPG';
 
             const npcList = npcNames.map(n => {
                 const key = this.data.getBotKey(n);
@@ -1633,14 +1633,120 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         if (toRemove.length > 0) console.debug(LOG_PREFIX, `Cleaned up ${toRemove.length} minor NPCs`);
     }
 
-    // ── Player Stats Detection (with NPC proximity filter + sanity checks) ──
+    // ── Player Stats Detection (hardened: structured-first, with NPC filter + sanity) ──
     detectPlayerStatsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetectStats || !text || this.data._isLoading) return;
 
         let playerName = '';
         try { playerName = (getContext().name1 || '').trim(); } catch(e) {}
 
-        // ── Step 1: Try to isolate player-specific status block ──
+        const p = this.data.player;
+        const expName = p.universe?.expName || 'EXP';
+        const goldName = p.universe?.goldName || 'Gold';
+
+        // ── Build dynamic keyword sets ONCE ──
+        const levelAliases = new Set(['LV', 'LEVEL', 'เลเวล']);
+        const expAliases = new Set(['EXP', 'XP']);
+        const goldAliases = new Set(['GOLD', 'MONEY', 'COIN', 'COINS', 'ทอง', 'เงิน']);
+        if (p.universe?.levelName) {
+            levelAliases.add(p.universe.levelName.toUpperCase());
+            for (const word of p.universe.levelName.split(/\s+/)) {
+                if (word.length >= 2) levelAliases.add(word.toUpperCase());
+            }
+        }
+        if (expName) {
+            expAliases.add(expName.toUpperCase());
+            for (const word of expName.split(/\s+/)) {
+                if (word.length >= 2) expAliases.add(word.toUpperCase());
+            }
+        }
+        if (goldName) {
+            goldAliases.add(goldName.toUpperCase());
+            for (const word of goldName.split(/\s+/)) {
+                if (word.length >= 2) goldAliases.add(word.toUpperCase());
+            }
+        }
+
+        // FIX: Register custom stat names so StatDetector._isValid accepts them
+        this.detector.setDynamicStats([
+            ...levelAliases, ...expAliases, ...goldAliases,
+            ...(p.universe?.statNames || SAO_STATS)
+        ]);
+
+        let changed = false;
+        const updates = [];
+
+        // ══════════════════════════════════════════════════════════════
+        // PRIORITY 0 (HIGHEST): Strict [Status: HP: X/Y | MP: X/Y ...] one-line tag
+        // When AI follows our prompt correctly, this fires exclusively.
+        // Completely bypasses narrative scanning → zero false positives.
+        // ══════════════════════════════════════════════════════════════
+        const strictStatusRx = /\[\s*Status\s*:\s*((?:[\w\u0E00-\u0E7F]+\s*:\s*[+-]?\d+(?:\/\d+)?\s*\|?\s*)+)\]/gi;
+        let strictMatch;
+        let usedStrict = false;
+        while ((strictMatch = strictStatusRx.exec(text)) !== null) {
+            usedStrict = true;
+            const block = strictMatch[1];
+            const pairRx = /([\w\u0E00-\u0E7F]+)\s*:\s*([+-]?\d+)(?:\/(\d+))?/gi;
+            let pair;
+            while ((pair = pairRx.exec(block)) !== null) {
+                const upper = pair[1].trim().toUpperCase();
+                const value = parseInt(pair[2], 10);
+                const max = pair[3] ? parseInt(pair[3], 10) : null;
+                const isDelta = pair[2].startsWith('+') || pair[2].startsWith('-');
+                const apply = (current, maxVal) => {
+                    const target = isDelta ? current + value : value;
+                    return Math.max(0, maxVal != null ? Math.min(target, maxVal) : target);
+                };
+
+                if (['HP', 'พลังชีวิต', 'HEALTH'].includes(upper)) {
+                    if (max != null && max > 0) { p.hpMax = max; changed = true; }
+                    const v = apply(p.hp, p.hpMax);
+                    if (p.hp !== v) { p.hp = v; changed = true; updates.push(`HP: ${v}`); }
+                } else if (['MP', 'MANA', 'พลังเวทย์'].includes(upper)) {
+                    if (max != null && max > 0) { p.mpMax = max; changed = true; }
+                    const v = apply(p.mp, p.mpMax);
+                    if (p.mp !== v) { p.mp = v; changed = true; updates.push(`MP: ${v}`); }
+                } else if (expAliases.has(upper)) {
+                    if (max != null && max > 0) { p.expMax = max; changed = true; }
+                    const v = apply(p.exp, p.expMax);
+                    if (p.exp !== v) { p.exp = v; changed = true; updates.push(`${expName}: ${v}`); }
+                } else if (levelAliases.has(upper)) {
+                    const newLv = apply(p.level, null);
+                    if (newLv > p.level) {
+                        const gained = this.data.levelUp(newLv);
+                        changed = true;
+                        if (p.universe) p.universe.levelDisplay = String(newLv);
+                        updates.push(`Level Up! Lv.${newLv} (+${gained} pts)`);
+                        if (!isBulk) notify('success', `Level ${newLv}! +${gained} stat points!`, '⭐ LEVEL UP!', { timeOut: 5000 });
+                    } else if (newLv !== p.level && !isDelta) {
+                        p.level = newLv;
+                        if (p.universe) p.universe.levelDisplay = String(newLv);
+                        changed = true; updates.push(`Lv.${newLv}`);
+                    }
+                } else if (goldAliases.has(upper)) {
+                    const v = apply(p.gold, null);
+                    if (p.gold !== v) { p.gold = v; changed = true; updates.push(`${goldName}: ${v}`); }
+                } else if ((p.universe?.statNames || SAO_STATS).includes(upper)) {
+                    const v = apply(p.stats[upper] || 0, null);
+                    if (p.stats[upper] !== v) { p.stats[upper] = v; changed = true; updates.push(`${upper}: ${v}`); }
+                }
+            }
+        }
+
+        // If strict [Status: ...] block found → skip all narrative scanning
+        if (usedStrict) {
+            if (changed && !isBulk) {
+                this.data.recalcDerived();
+                this.saveAndRender();
+                if (updates.length > 0) notify('info', updates.join(', '), '⚔ Status Updated', { timeOut: 3000 });
+            }
+            return;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // PRIORITY 1: Semi-structured blocks (fallback for older AI outputs)
+        // ══════════════════════════════════════════════════════════════
         let statusText = '';
         let isStructured = false;
 
@@ -1681,40 +1787,6 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             }
         }
 
-        const p = this.data.player;
-        let changed = false;
-        const updates = [];
-
-        // FIX: Build dynamic keyword sets from universe config so custom names
-        // like 'Missions'(EXP), 'Ryo'(Gold), 'Ninja Rank'(Level) are recognized after Sync Universe
-        const levelAliases = new Set(['LV', 'LEVEL', 'เลเวล']);
-        const expAliases = new Set(['EXP', 'XP']);
-        const goldAliases = new Set(['GOLD', 'MONEY', 'COIN', 'COINS', 'ทอง', 'เงิน']);
-        if (p.universe?.levelName) {
-            levelAliases.add(p.universe.levelName.toUpperCase());
-            for (const word of p.universe.levelName.split(/\s+/)) {
-                if (word.length >= 2) levelAliases.add(word.toUpperCase());
-            }
-        }
-        if (p.universe?.expName) {
-            expAliases.add(p.universe.expName.toUpperCase());
-            for (const word of p.universe.expName.split(/\s+/)) {
-                if (word.length >= 2) expAliases.add(word.toUpperCase());
-            }
-        }
-        if (p.universe?.goldName) {
-            goldAliases.add(p.universe.goldName.toUpperCase());
-            for (const word of p.universe.goldName.split(/\s+/)) {
-                if (word.length >= 2) goldAliases.add(word.toUpperCase());
-            }
-        }
-
-        // FIX: Register custom stat names so StatDetector._isValid accepts them
-        this.detector.setDynamicStats([
-            ...levelAliases, ...expAliases, ...goldAliases,
-            ...(p.universe?.statNames || SAO_STATS)
-        ]);
-
         for (const name of keys) {
             const { value, max, isDelta } = detected[name];
             const upper = name.toUpperCase();
@@ -1726,16 +1798,27 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 if (sm && npcZones.some(z => sm.index >= z.start && sm.index <= z.end)) continue;
             }
 
-            // ── Sanity checks for unstructured/absolute values ──
+            // ── HARDENED sanity checks for unstructured/absolute values ──
             if (!isStructured && !isDelta) {
                 if (levelAliases.has(upper)) {
-                    if (Math.abs(value - (p.level || 1)) > 10) continue;
+                    // Level can't jump more than 5 levels from narrative
+                    if (Math.abs(value - (p.level || 1)) > 5) continue;
                 }
-                if ((this.data.player.universe?.statNames || SAO_STATS).includes(upper)) {
-                    if (value > 200) continue;
+                if (['HP', 'พลังชีวิต', 'HEALTH'].includes(upper)) {
+                    // HP from narrative must be within 2x of current max
+                    if (value > p.hpMax * 2) continue;
+                }
+                if (['MP', 'MANA', 'พลังเวทย์'].includes(upper)) {
+                    // MP from narrative must be within 2x of current max  
+                    if (value > p.mpMax * 2) continue;
+                }
+                if ((p.universe?.statNames || SAO_STATS).includes(upper)) {
+                    // Stats from narrative capped at 100
+                    if (value > 100) continue;
                 }
                 if (goldAliases.has(upper)) {
-                    if (p.gold > 100 && value > p.gold * 50) continue;
+                    // Gold can't multiply by more than 10x from narrative
+                    if (p.gold > 100 && value > p.gold * 10) continue;
                 }
             }
 
@@ -1756,13 +1839,12 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             } else if (expAliases.has(upper)) {
                 if (max != null && p.expMax !== max) { p.expMax = max; changed = true; }
                 const v = applyVal(p.exp, value, p.expMax);
-                if (p.exp !== v) { p.exp = v; changed = true; updates.push(`EXP: ${v}`); }
+                if (p.exp !== v) { p.exp = v; changed = true; updates.push(`${expName}: ${v}`); }
             } else if (levelAliases.has(upper)) {
                 const newLv = applyVal(p.level, value, null);
                 if (newLv > p.level) {
                     const gained = this.data.levelUp(newLv);
                     changed = true;
-                    // Keep levelDisplay in sync with numeric level
                     if (p.universe) p.universe.levelDisplay = String(newLv);
                     updates.push(`Level Up! Lv.${newLv} (+${gained} pts)`);
                     if (!isBulk) notify('success', `Level ${newLv}! +${gained} stat points!`, '⭐ LEVEL UP!', { timeOut: 5000 });
@@ -1773,31 +1855,31 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 }
             } else if (goldAliases.has(upper)) {
                 const v = applyVal(p.gold, value, null);
-                if (p.gold !== v) { p.gold = v; changed = true; updates.push(`Gold: ${v}`); }
-            } else if ((this.data.player.universe?.statNames || SAO_STATS).includes(upper)) {
+                if (p.gold !== v) { p.gold = v; changed = true; updates.push(`${goldName}: ${v}`); }
+            } else if ((p.universe?.statNames || SAO_STATS).includes(upper)) {
                 const v = applyVal(p.stats[upper] || 0, value, null);
                 if (p.stats[upper] !== v) { p.stats[upper] = v; changed = true; updates.push(`${upper}: ${v}`); }
             } else if (['ATK','ATTACK','พลังโจมตี','ค่าโจมตี'].includes(upper)) {
-                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[0];
+                const targetStat = (p.universe?.statNames || SAO_STATS)[0];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             } else if (['DEF','DEFENSE','พลังป้องกัน','ค่าป้องกัน','ARMOR'].includes(upper)) {
-                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[2];
+                const targetStat = (p.universe?.statNames || SAO_STATS)[2];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             } else if (['SPD','SPEED','ความเร็ว'].includes(upper)) {
-                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[1];
+                const targetStat = (p.universe?.statNames || SAO_STATS)[1];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             } else if (['MAGIC','MATK','สติปัญญา'].includes(upper)) {
-                const targetStat = (this.data.player.universe?.statNames || SAO_STATS)[3];
+                const targetStat = (p.universe?.statNames || SAO_STATS)[3];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
             }
         }
 
         if (changed && !isBulk) {
-            this.saveAndRender();
+            this._pendingChange = true;
             if (updates.length > 0) notify('info', updates.join(', '), '⚔ Status Updated', { timeOut: 3000 });
         }
     }
@@ -1838,12 +1920,12 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         if (affValues.length === 0 && annValues.length === 0) return;
 
         const findNearestNpc = (pos) => {
-            let best = npcPositions[0];
+            let best = null;
             for (const npc of npcPositions) {
                 if (npc.pos <= pos) best = npc;
                 else break;
             }
-            return best.key;
+            return best?.key || null;
         };
 
         let changed = false;
@@ -1851,6 +1933,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
         for (const { pos, val, isDelta } of affValues) {
             const npcKey = findNearestNpc(pos);
+            if (!npcKey) continue;
             const bot = this.data.bots[npcKey];
             if (bot) {
                 const target = isDelta ? bot.affection + val : val;
@@ -1865,6 +1948,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         }
         for (const { pos, val, isDelta } of annValues) {
             const npcKey = findNearestNpc(pos);
+            if (!npcKey) continue;
             const bot = this.data.bots[npcKey];
             if (bot) {
                 const target = isDelta ? bot.annoyance + val : val;
@@ -1879,7 +1963,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         }
 
         if (changed && !isBulk) {
-            this.saveAndRender();
+            this._pendingChange = true;
             const summary = [...updatedNpcs].map(k => {
                 const b = this.data.bots[k];
                 return `${b.nickname}: ❤${b.affection} 💢${b.annoyance}`;
@@ -1968,12 +2052,16 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             const moneyRx2 = new RegExp(`(?:${moneyTerms})\\s*(\\d+)`, 'i');
             const pureMoneyRx = new RegExp(`^(?:${moneyTerms})$`, 'i');
             const moneyMatch = clean.match(moneyRx) || clean.match(moneyRx2);
-            if (moneyMatch && !isLoss) {
-                // Convert money item to gold gain
+            if (moneyMatch) {
                 const goldAmt = parseInt(moneyMatch[1]);
                 if (goldAmt > 0 && goldAmt < 100000) {
-                    this.data.player.gold = (this.data.player.gold || 0) + goldAmt;
-                    gains.push(`+${goldAmt} ${this.data.player?.universe?.goldName || 'Gold'}`);
+                    if (isLoss) {
+                        this.data.player.gold = Math.max(0, (this.data.player.gold || 0) - goldAmt);
+                        losses.push(`-${goldAmt} ${this.data.player?.universe?.goldName || 'Gold'}`);
+                    } else {
+                        this.data.player.gold = (this.data.player.gold || 0) + goldAmt;
+                        gains.push(`+${goldAmt} ${this.data.player?.universe?.goldName || 'Gold'}`);
+                    }
                     changed = true;
                 }
                 return;
@@ -2006,18 +2094,20 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             changed = true;
         };
 
-        // FIX: Require line-start or bracket context for item gain/loss detection
-        // prevent mid-sentence narrative from triggering false positives
+        // HARDENED: Prioritize bracketed format [ได้รับไอเท็ม: X] over narrative patterns.
+        // Non-bracket patterns require strict line-start OR bullet-point context.
         const gainRx = [
-            /(?:^|[\n\r\[|•►])\s*(?:ได้รับ(?:ไอเท็ม)?|เก็บได้|พบ|หยิบ|ซื้อ|คว้ามา|รับ)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\]。]|\n|\r|$)/gim,
-            /(?:^|[\n\r\[|•►])\s*(?:obtain(?:ed)?|receive[ds]?|got|found|pick(?:ed)?\s*up|bought|loot(?:ed)?|acquire[ds]?|reward(?:ed)?|earned)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\].]|\n|\r|$)/gim,
+            // Priority 1: Bracketed format (most reliable — what our prompt asks for)
             /\[\s*(?:ได้รับ(?:ไอเท็ม)?|item\s*(?:obtained|received|found)?|loot|reward)\s*[:：]?\s*([^\]\n]+?)\s*\]/gim,
+            // Priority 2: Bullet/list format at line start only (not mid-sentence)
+            /(?:^|\n)\s*[-•*►▸]\s*(?:ได้รับ(?:ไอเท็ม)?|obtain(?:ed)?|receive[ds]?|loot(?:ed)?|reward(?:ed)?)\s*[:：]\s*([^\n]{2,60})/gim,
         ];
 
         const lossRx = [
-            /(?:^|[\n\r\[|•►])\s*(?:เสีย|สูญเสีย|ถูกขโมย|ทิ้ง|ขาย|ใช้)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\]。]|\n|\r|$)/gim,
-            /(?:^|[\n\r\[|•►])\s*(?:lost|used|consumed|sold|broke[n]?|destroyed|dropped|spent|discarded)\s*[:：]\s*[「『"']?([^「」『』"'\n]+?)[」』"']?\s*(?:[,、|)\].]|\n|\r|$)/gim,
-            /\[\s*(?:เสีย|สูญเสีย|lost|used|consumed)\s*[:：]?\s*([^\]\n]+?)\s*\]/gim,
+            // Priority 1: Bracketed format (most reliable)
+            /\[\s*(?:เสีย(?:ไอเท็ม)?|สูญเสีย|lost|used|consumed)\s*[:：]?\s*([^\]\n]+?)\s*\]/gim,
+            // Priority 2: Bullet/list format at line start only
+            /(?:^|\n)\s*[-•*►▸]\s*(?:เสีย(?:ไอเท็ม)?|สูญเสีย|lost|used|consumed)\s*[:：]\s*([^\n]{2,60})/gim,
         ];
 
         for (const rxTemplate of gainRx) {
@@ -2162,10 +2252,54 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         if (changed) this.saveAndRender();
     }
 
-    // FIX: Split live vs bulk processing to prevent accumulation bugs
+    /**
+     * Post-processing: Remove tracker status tags from the displayed message.
+     * Only modifies the DOM element — raw message data in chat history is preserved
+     * so bulk re-scanning (on delete, etc.) still works.
+     * 
+     * Strips: [Status: HP: X/X | ...], [ได้รับสกิล: ...], [ได้รับไอเท็ม: ...],
+     * [เสียไอเท็ม: ...], [Skill Learned: ...], [Item Obtained: ...], etc.
+     */
+    _sanitizeDisplayMessage(idx) {
+        try {
+            const msgEl = document.querySelector(`[mesid="${idx}"] .mes_text`);
+            if (!msgEl) return;
+            
+            const html = msgEl.innerHTML;
+            // Build dynamic stat name list for sanitizer regex
+            const dynamicStats = this.data.player?.universe?.statNames || [];
+            const baseStats = ['HP','MP','SP','EXP','STR','AGI','VIT','INT','DEX','LUK','ATK','DEF','SPD','LV','LEVEL'];
+            const allStatNames = [...new Set([...baseStats, ...dynamicStats])].join('|');
+            // Match tracker tags — both English and Thai variants
+            const cleaned = html
+                // [Status: HP: X/X | MP: X/X | EXP: X/X | Gold: X] — full status block
+                .replace(/\[Status\s*:\s*[^\]]{5,200}\]/gi, '')
+                // [ได้รับสกิล: ...], [ได้รับไอเท็ม: ...], [เสียไอเท็ม: ...]
+                .replace(/\[(?:ได้รับ|เสีย)(?:สกิล|ไอเท็ม|ทักษะ)\s*:\s*[^\]]{2,150}\]/gi, '')
+                // [Skill Learned: ...], [Item Obtained: ...], [Item Lost: ...]
+                .replace(/\[(?:Skill\s+(?:Learned|Unlocked|Acquired)|New\s+Skill|Item\s+(?:Obtained|Received|Found|Lost|Used))\s*:\s*[^\]]{2,150}\]/gi, '')
+                // Stat-only tags: [HP: 100], [NIN: 10], etc — uses dynamic stat names
+                .replace(new RegExp(`\\[\\s*(?:${allStatNames})\\s*:\\s*\\d+(?:/\\d+)?\\s*\\]`, 'gi'), '')
+                // Clean up leftover empty lines / whitespace
+                .replace(/(<br\s*\/?>){3,}/gi, '<br><br>')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            
+            if (cleaned !== html) {
+                msgEl.innerHTML = cleaned;
+            }
+        } catch (e) {
+            console.debug(LOG_PREFIX, 'Sanitize display error:', e);
+        }
+    }
+
+    // FIX: Split live vs bulk processing to prevent accumulation bugs.
+    // All detectors now set this._pendingChange = true instead of calling saveAndRender directly.
+    // The single saveAndRender at the end batches everything into one save.
     processMessageLive(text) {
         // Guard: skip all detection if extension is disabled
         if (extension_settings[META_KEY]?.enabled === false) return;
+        this._pendingChange = false;
         this.detectNPCsFromMessage(text);
         this.detectPlayerStatsFromMessage(text);
         this.detectRelationshipFromMessage(text);
@@ -2173,6 +2307,8 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         this.detectSkillsFromMessage(text);
         this.detectConditionsFromMessage(text);
         this.detectNPCMoodFromMessage(text);
+        // Single batched save for all changes
+        if (this._pendingChange) this.saveAndRender();
     }
 
     processMessageBulk(text) {
@@ -2300,7 +2436,10 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             if (/^(skill|สกิล|ทักษะ|new|learned|unlocked|acquired|obtained|gain|rank|desc|none|null)$/i.test(rawName)) continue;
             // FIX: Reject common narrative phrases that aren't real skill names
             if (/^(the |a |an |she |he |they |her |his |their |it |its |that |this )/i.test(rawName)) continue;
-            if (/^.{0,5}(said|felt|was|were|had|got|saw|knew|began|looked|seemed|wanted)\b/i.test(rawName)) continue;
+            if (/^.{0,5}(said|felt|was|were|had|got|saw|knew|began|looked|seemed|wanted|tried|started|decided|noticed)\b/i.test(rawName)) continue;
+            // FIX: Reject Thai narrative verbs/phrases that leak as skill names
+            if (/^(เธอ|เขา|มัน|คน|คุณ|ตัว|พวก|ที่|ของ|การ|ความ|จาก|ใน|ไป|มา|ทำ|ให้|ได้|แล้ว|อยู่|กับ|และ|หรือ|แต่|จะ|ก็|ยัง|ไม่|ถ้า|เมื่อ)/.test(rawName)) continue;
+            if (/^(แสดง|รู้สึก|ดูเหมือน|พยายาม|ตัดสินใจ|สังเกต|ตระหนัก|คิด|เริ่ม|หัน|มอง|พูด|ถาม|ตอบ|บอก|เดิน|วิ่ง|นั่ง|ยืน)/.test(rawName)) continue;
 
             let desc = (m[2] || '').trim();
             
@@ -2446,6 +2585,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         editorObserver.observe(document.body, { childList: true, subtree: true });
 
         const ok = await callGenericPopup(html, POPUP_TYPE.CONFIRM);
+        editorObserver.disconnect(); // cleanup in case popup closed before observer triggered
         if (!ok) return;
 
         bot.nickname = newNick?.trim() || bot.nickname;
@@ -2513,10 +2653,14 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         </div>`;
         document.body.appendChild(root);
 
-        // ── Button click: reset mobile position then toggle ──
+        // ── Position button using JS (CSS bottom/right broken by html{perspective:1000px}) ──
+        this._positionFloatBtn();
+
+        // ── Button click: position overlay then toggle ──
         btn.addEventListener('click', () => {
-            this._resetMobileOverlayPosition(root);
+            const willShow = !root.classList.contains('show-overlay');
             root.classList.toggle('show-overlay');
+            if (willShow) this._positionOverlay();
         });
         document.getElementById('ac-close-btn')?.addEventListener('click', () => root.classList.remove('show-overlay'));
         document.getElementById('ac-reset-btn')?.addEventListener('click', () => this.confirmReset());
@@ -2540,8 +2684,79 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             this._makePanelDraggable(root, header);
         }
 
+        // ── Reposition on resize / orientation change ──
+        const onResize = () => {
+            this._positionFloatBtn();
+            if (root.classList.contains('show-overlay')) this._positionOverlay();
+        };
+        window.addEventListener('resize', onResize);
+        window.addEventListener('orientationchange', () => setTimeout(onResize, 300));
+
         this.updateFloatBtn();
         this.ui.render();
+    }
+
+    /**
+     * Position the floating button using JS top/left.
+     * CSS bottom/right DON'T WORK because <html> has perspective:1000px
+     * which creates a containing block with height=0, pushing bottom-positioned
+     * elements above the viewport (negative Y).
+     */
+    _positionFloatBtn() {
+        const btn = document.getElementById('azure-codex-float-btn');
+        if (!btn) return;
+        // If button was dragged (has saved position in localStorage), keep that
+        if (btn.dataset.dragged === 'true') return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        requestAnimationFrame(() => {
+            const bw = btn.offsetWidth || 170;
+            const bh = btn.offsetHeight || 48;
+            if (vw <= 768) {
+                // Mobile: bottom-center, above the input bar (~80px from bottom)
+                btn.style.left = Math.round((vw - bw) / 2) + 'px';
+                btn.style.top = (vh - bh - 80) + 'px';
+            } else {
+                // Desktop: bottom-right corner
+                btn.style.left = (vw - bw - 20) + 'px';
+                btn.style.top = (vh - bh - 20) + 'px';
+            }
+            btn.style.bottom = 'auto';
+            btn.style.right = 'auto';
+        });
+    }
+
+    /**
+     * Position the overlay panel using JS top/left.
+     * Same fix as _positionFloatBtn — viewport-relative positioning.
+     */
+    _positionOverlay() {
+        const root = document.getElementById('azure-codex-root');
+        if (!root) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        if (vw <= 768) {
+            // Mobile: full-width bottom sheet, max 80% of viewport
+            const maxH = Math.round(vh * 0.8);
+            root.style.left = '0px';
+            root.style.top = (vh - maxH) + 'px';
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+            root.style.width = vw + 'px';
+            root.style.maxWidth = vw + 'px';
+            root.style.maxHeight = maxH + 'px';
+        } else {
+            // Desktop: floating panel, bottom-right
+            const pw = Math.min(620, vw - 40);
+            const maxH = vh - 100;
+            root.style.left = (vw - pw - 20) + 'px';
+            root.style.top = Math.max(20, vh - maxH - 80) + 'px';
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+            root.style.width = pw + 'px';
+            root.style.maxWidth = pw + 'px';
+            root.style.maxHeight = maxH + 'px';
+        }
     }
 
     /**
@@ -2560,21 +2775,31 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
         const isMobile = () => window.innerWidth <= 768;
 
-        // Restore saved position — ONLY on desktop
-        // On mobile, button uses CSS positioning (bottom-center with higher bottom)
+        // Restore saved position (works on all viewports since we use JS positioning)
         try {
             const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number' && !isMobile()) {
+            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
                 requestAnimationFrame(() => {
-                    if (isMobile()) return; // Double-check after rAF
                     const w = el.offsetWidth || 140;
                     const h = el.offsetHeight || 44;
+                    const vh = window.innerHeight;
+                    const vw = window.innerWidth;
                     const clamped = this._clampToViewport(saved.x, saved.y, w, h);
+                    // Validate: discard stale positions from the old broken positioning era
+                    // If stored position was negative, near top edge, or way off-screen, ignore it
+                    if (saved.y < 0 || saved.y > vh || saved.x < -w || saved.x > vw) {
+                        console.debug(LOG_PREFIX, 'Discarding stale stored position:', saved);
+                        localStorage.removeItem(storageKey);
+                        return; // Let _positionFloatBtn handle fresh positioning
+                    }
                     el.style.left = clamped.x + 'px';
                     el.style.top = clamped.y + 'px';
                     el.style.right = 'auto';
                     el.style.bottom = 'auto';
-                    if (isFloatBtn) el.style.transform = 'none';
+                    if (isFloatBtn) {
+                        el.style.transform = 'none';
+                        el.dataset.dragged = 'true';
+                    }
                 });
             }
         } catch { /* ignore */ }
@@ -2632,22 +2857,11 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             el.style.transition = '';
 
             if (hasMoved) {
+                if (isFloatBtn) el.dataset.dragged = 'true';
                 const rect = el.getBoundingClientRect();
-                // Only save position on desktop
-                if (!isMobile()) {
-                    try {
-                        localStorage.setItem(storageKey, JSON.stringify({ x: rect.left, y: rect.top }));
-                    } catch { /* quota full */ }
-                } else {
-                    // On mobile after drag, reset to CSS defaults
-                    if (isFloatBtn) {
-                        el.style.left = '';
-                        el.style.top = '';
-                        el.style.right = '';
-                        el.style.bottom = '';
-                        el.style.transform = '';
-                    }
-                }
+                try {
+                    localStorage.setItem(storageKey, JSON.stringify({ x: rect.left, y: rect.top }));
+                } catch { /* quota full */ }
             }
         };
 
@@ -2746,25 +2960,14 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         };
     }
 
-    /** Reset inline position styles on the overlay for mobile so CSS takes over */
-    _resetMobileOverlayPosition(root) {
-        if (window.innerWidth > 768) return;
-        // Clear any inline styles that would override the CSS bottom-sheet positioning
-        root.style.left = '';
-        root.style.top = '';
-        root.style.right = '';
-        root.style.bottom = '';
-        root.style.transform = '';
-        root.style.width = '';
-        root.style.maxWidth = '';
-        root.style.maxHeight = '';
-    }
+    // _resetMobileOverlayPosition removed — positioning handled by _positionOverlay()
 
     toggleOverlay() {
         const root = document.getElementById('azure-codex-root');
         if (root) {
-            this._resetMobileOverlayPosition(root);
+            const willShow = !root.classList.contains('show-overlay');
             root.classList.toggle('show-overlay');
+            if (willShow) this._positionOverlay();
         }
     }
 
@@ -2912,7 +3115,8 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             this.data.load(); this.ui.activeTab = 'all'; this.ui.selectedNpc = null; this.ui.render();
             this.lastProcessedIdx = -1;
             this._personaSynced = false;
-            this._lastMsgTimestamp = 0; // debounce guard
+            this._lastContentFingerprint = ''; // reset content dedup
+            this._swipeRestorePending = false; // reset swipe flag
 
             setTimeout(() => {
                 this._isBulkScanning = true;
@@ -2980,6 +3184,20 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             }, 500);
         });
 
+        // ── Swipe handler: pre-restore state before new swipe content is processed ──
+        eventSource.on(event_types.MESSAGE_SWIPED, (idx) => {
+            try {
+                if (extension_settings[META_KEY]?.enabled === false) return;
+                if (this._isBulkScanning) return;
+                // Mark that a swipe is in progress — ensures CHARACTER_MESSAGE_RENDERED
+                // bypasses dedup and properly restore+reprocesses
+                if (idx === this.lastProcessedIdx) {
+                    this._swipeRestorePending = true;
+                    console.debug(LOG_PREFIX, `Swipe detected at idx ${idx} — restore pending`);
+                }
+            } catch (err) { console.warn(LOG_PREFIX, 'Swipe handler error:', err); }
+        });
+
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (idx) => {
             try {
                 // Guard: skip if disabled or during bulk scan
@@ -2989,13 +3207,19 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 const msg = getContext().chat?.[idx];
                 if (!msg || msg.is_user || msg.is_system || !msg.mes) return;
 
-                // Debounce: skip if same message processed within 200ms (prevents double-fire)
-                const now = Date.now();
-                if (idx === this.lastProcessedIdx && (now - this._lastMsgTimestamp) < 200) return;
-                this._lastMsgTimestamp = now;
+                // FIX: Content-based dedup instead of time-based debounce.
+                // The old 200ms debounce blocked swipe/regen from restoring state
+                // because CHARACTER_MESSAGE_RENDERED fires within 200ms with the same idx.
+                // Content fingerprint correctly detects:
+                //   - Swipe/regen: different content → process ✅
+                //   - Genuine double-fire: same content → skip ✅
+                const contentFingerprint = `${idx}:${msg.mes.length}:${msg.mes.substring(0, 80)}`;
+                if (contentFingerprint === this._lastContentFingerprint && !this._swipeRestorePending) return;
+                this._lastContentFingerprint = contentFingerprint;
 
                 if (idx === this.lastProcessedIdx) {
                     this.data.restore();
+                    this._swipeRestorePending = false;
                 } else if (idx > this.lastProcessedIdx) {
                     this.data.backup();
                 } else {
@@ -3012,6 +3236,9 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
                 this.processMessageLive(msg.mes);
                 this.lastProcessedIdx = idx;
+
+                // ── Post-processing: hide tracker tags from display ──
+                this._sanitizeDisplayMessage(idx);
             } catch (err) { console.warn(LOG_PREFIX, 'Message error:', err); }
         });
 
