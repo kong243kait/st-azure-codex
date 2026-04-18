@@ -20,8 +20,8 @@ const $ = /** @type {any} */ (window).$;
 const jQuery = /** @type {any} */ (window).jQuery;
 
 // ─── Constants ───
-const EXT_NAME   = 'third-party/st-azure-codex';
-const META_KEY   = 'azure_codex';
+const EXT_NAME = 'third-party/st-azure-codex';
+const META_KEY = 'azure_codex';
 const LOG_PREFIX = '[AzureCodex]';
 
 const DEFAULT_SETTINGS = { autoDetect: true, autoDetectStats: true, showFloatBtn: true, enabled: true };
@@ -52,41 +52,92 @@ const RANK_COLORS = { F: '#888', E: '#6a8', D: '#5a9', C: '#4a90d9', B: '#ab47bc
 // ─── Shared Regex Patterns (compiled once) ───
 const STAT_EMOJI_PREFIX = '[\s\[\(|•·►▸▹⊳❯»›→⟩☞✦✧✿❖⚔🗡️💎⭐🛡️❤️💙💚💛🔥⚡💧🌟💀👑🎭📊]';
 const STAT_NAME_CHARS = 'A-Za-z\u0E00-\u0E7F\u4E00-\u9FFF';
-const BOLD_RX_SRC = `\\*\\*([${STAT_NAME_CHARS}][${STAT_NAME_CHARS}\\s]{0,25})\\*\\*`;
+const BOLD_NAME_CHARS = "A-Za-z\\u0E00-\\u0E7F\\u4E00-\\u9FFF'\\-\\.";
+const BOLD_RX_SRC = `\\*\\*([${BOLD_NAME_CHARS}][${BOLD_NAME_CHARS}\\s]{0,25})\\*\\*`;
 const THAI_RX = /[\u0E00-\u0E7F]/;
 
 const KNOWN_STATS = new Set([
-    'hp','mp','sp','tp','ep','ap','str','dex','agi','int','wis','con','cha','luk','vit','end',
-    'atk','def','matk','mdef','spd','eva','acc','crit','lv','level','exp','gold','money','coin','coins',
-    'hunger','thirst','stamina','energy','mana','health','sanity','morale','reputation','karma','luck',
-    'attack','defense','magic','speed','power','strength','agility','intelligence','wisdom','charisma',
-    'constitution','endurance','dexterity','vitality','armor','damage','shield','resist','resistance',
-    'พลังชีวิต','พลังเวทย์','พลังโจมตี','พลังป้องกัน','เลเวล','ค่าโจมตี','ค่าป้องกัน','ความเร็ว',
-    'ความหิว','ความกระหาย','พลังงาน','ทอง','เงิน','ชื่อเสียง','สติ','กำลัง','ความคล่องตัว','สติปัญญา',
+    'hp', 'mp', 'sp', 'tp', 'ep', 'ap', 'str', 'dex', 'agi', 'int', 'wis', 'con', 'cha', 'luk', 'vit', 'end',
+    'atk', 'def', 'matk', 'mdef', 'spd', 'eva', 'acc', 'crit', 'lv', 'level', 'exp', 'gold', 'money', 'coin', 'coins',
+    'hunger', 'thirst', 'stamina', 'energy', 'mana', 'health', 'sanity', 'morale', 'reputation', 'karma', 'luck',
+    'attack', 'defense', 'magic', 'speed', 'power', 'strength', 'agility', 'intelligence', 'wisdom', 'charisma',
+    'constitution', 'endurance', 'dexterity', 'vitality', 'armor', 'damage', 'shield', 'resist', 'resistance',
+    'พลังชีวิต', 'พลังเวทย์', 'พลังโจมตี', 'พลังป้องกัน', 'เลเวล', 'ค่าโจมตี', 'ค่าป้องกัน', 'ความเร็ว',
+    'ความหิว', 'ความกระหาย', 'พลังงาน', 'ทอง', 'เงิน', 'ชื่อเสียง', 'สติ', 'กำลัง', 'ความคล่องตัว', 'สติปัญญา',
 ]);
 
 const STAT_IGNORE_WORDS = new Set([
-    'chapter','part','page','line','step','day','year','age','score','round','turn','phase',
-    'act','scene','episode','room','floor','no','number','vol','version','ver','pm','am','id','ch','ep','pt',
+    'chapter', 'part', 'page', 'line', 'step', 'day', 'year', 'age', 'score', 'round', 'turn', 'phase',
+    'act', 'scene', 'episode', 'room', 'floor', 'no', 'number', 'vol', 'version', 'ver', 'pm', 'am', 'id', 'ch', 'ep', 'pt',
 ]);
 
 const COMMON_WORDS = new Set([
-    'the','and','but','for','not','you','all','can','had','her','was','one','our','out','are','has','his',
-    'how','its','may','new','now','old','see','way','who','did','get','let','say','she','too','use','him',
-    'than','then','them','been','have','said','each','will','they','this','that','with','what','your',
-    'from','just','very','some','more','also','into','note','action','system','user','info','error','warning','true','false',
+    'the', 'and', 'but', 'for', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'are', 'has', 'his',
+    'how', 'its', 'may', 'new', 'now', 'old', 'see', 'way', 'who', 'did', 'get', 'let', 'say', 'she', 'too', 'use', 'him',
+    'than', 'then', 'them', 'been', 'have', 'said', 'each', 'will', 'they', 'this', 'that', 'with', 'what', 'your',
+    'from', 'just', 'very', 'some', 'more', 'also', 'into', 'note', 'action', 'system', 'user', 'info', 'error', 'warning', 'true', 'false',
     // Thai pronouns, group words, and common terms that are NOT NPC names
-    'ข้า','เจ้า','คุณ','เธอ','มึง','เขา','เรา','พวก','ฉัน','ผม','ท่าน','นาย','นาง','เด็ก','แก',
-    'กลุ่ม','พวกเรา','พวกมึง','พวกเขา','พวกเจ้า','พวกมัน','ทีม','ฝ่าย','พรรค','สมาชิก','สหาย',
-    'ตัวละคร','ตัวเอก','คนแปลกหน้า','ศัตรู','มิตร','สหายร่วมรบ','คู่ต่อสู้','คนแปลกหน้า',
-    'ทุกคน','ผู้คน','ใคร','อะไร','อะไรนะ','ทำไม','ทำไมจ๊ะ',
+    'ข้า', 'เจ้า', 'คุณ', 'เธอ', 'มึง', 'เขา', 'เรา', 'พวก', 'ฉัน', 'ผม', 'ท่าน', 'นาย', 'นาง', 'เด็ก', 'แก',
+    'กลุ่ม', 'พวกเรา', 'พวกมึง', 'พวกเขา', 'พวกเจ้า', 'พวกมัน', 'ทีม', 'ฝ่าย', 'พรรค', 'สมาชิก', 'สหาย',
+    'ตัวละคร', 'ตัวเอก', 'คนแปลกหน้า', 'ศัตรู', 'มิตร', 'สหายร่วมรบ', 'คู่ต่อสู้', 'คนแปลกหน้า',
+    'ทุกคน', 'ผู้คน', 'ใคร', 'อะไร', 'อะไรนะ', 'ทำไม', 'ทำไมจ๊ะ',
+]);
+
+// FIX BUG-NPC4: Words that AI frequently bolds but are NOT NPC names
+// (locations, generic creatures, objects, concepts, verbs)
+const NOT_NPC_WORDS = new Set([
+    // ── English: Locations ──
+    'inn', 'tavern', 'guild', 'castle', 'dungeon', 'forest', 'cave', 'tower', 'village', 'town', 'city', 'market',
+    'temple', 'shrine', 'palace', 'arena', 'bridge', 'gate', 'wall', 'door', 'floor', 'room', 'hall', 'street',
+    'kingdom', 'empire', 'world', 'continent', 'island', 'mountain', 'river', 'lake', 'ocean', 'sea', 'desert',
+    'camp', 'base', 'hideout', 'lair', 'ruins', 'tomb', 'labyrinth', 'maze', 'portal', 'shop', 'store', 'library',
+    'academy', 'school', 'prison', 'jail', 'underground', 'surface', 'entrance', 'exit', 'path', 'road', 'alley',
+    // ── English: Generic creatures/enemies ──
+    'dragon', 'goblin', 'zombie', 'skeleton', 'demon', 'wolf', 'slime', 'golem', 'spider', 'orc', 'troll', 'boss',
+    'monster', 'monsters', 'creature', 'creatures', 'beast', 'beasts', 'mob', 'mobs', 'enemy', 'enemies', 'minion',
+    'ghost', 'spirit', 'phantom', 'wraith', 'vampire', 'werewolf', 'bandit', 'thief', 'assassin', 'guard', 'soldier',
+    'knight', 'warrior', 'mage', 'wizard', 'sorcerer', 'archer', 'healer', 'priest', 'necromancer', 'summoner',
+    // ── English: Objects/Concepts ──
+    'sword', 'shield', 'potion', 'spell', 'magic', 'quest', 'mission', 'battle', 'fight', 'war', 'skill', 'item',
+    'weapon', 'armor', 'key', 'treasure', 'crystal', 'gem', 'stone', 'light', 'dark', 'fire', 'ice', 'wind', 'thunder',
+    'water', 'earth', 'shadow', 'holy', 'curse', 'blessing', 'enchantment', 'aura', 'barrier', 'trap', 'chest',
+    'reward', 'punishment', 'death', 'life', 'blood', 'poison', 'antidote', 'elixir', 'scroll', 'book', 'map',
+    'ring', 'necklace', 'amulet', 'cloak', 'robe', 'staff', 'wand', 'bow', 'arrow', 'axe', 'spear', 'dagger',
+    'notice', 'warning', 'alert', 'announcement', 'report', 'message', 'letter', 'note', 'sign', 'signal',
+    'title', 'name', 'class', 'rank', 'guild', 'party', 'team', 'group', 'faction', 'alliance', 'order',
+    // ── English: Common verbs/adjectives AI loves to bold ──
+    'important', 'dangerous', 'powerful', 'strong', 'mysterious', 'ancient', 'legendary', 'sacred', 'cursed',
+    'forbidden', 'secret', 'hidden', 'final', 'ultimate', 'supreme', 'royal', 'divine', 'demonic', 'dark',
+    'impossible', 'incredible', 'unbelievable', 'critical', 'fatal', 'deadly', 'massive', 'enormous',
+    'sudden', 'unexpected', 'intense', 'extreme', 'absolute', 'total', 'complete', 'perfect',
+    // ── Thai: สถานที่ ──
+    'คฤหาสน์', 'ป่า', 'ป่าดำ', 'ถ้ำ', 'หมู่บ้าน', 'เมือง', 'ตลาด', 'วิหาร', 'ศาลเจ้า', 'วัง', 'สนามรบ', 'สะพาน',
+    'ประตู', 'กำแพง', 'ห้อง', 'ทางเดิน', 'ถนน', 'ชั้น', 'ดันเจี้ยน', 'กิลด์', 'ปราสาท', 'หอคอย', 'เกาะ', 'ภูเขา',
+    'แม่น้ำ', 'ทะเล', 'ทะเลทราย', 'ค่าย', 'ฐาน', 'ซ่อน', 'ซากปรักหักพัง', 'สุสาน', 'เขาวงกต', 'ร้านค้า', 'ห้องสมุด',
+    'โรงเรียน', 'สถาบัน', 'คุก', 'ใต้ดิน', 'ทางเข้า', 'ทางออก', 'เส้นทาง', 'ตรอก',
+    // ── Thai: สัตว์ประหลาด/ศัตรูทั่วไป ──
+    'มังกร', 'ก็อบลิน', 'ซอมบี้', 'โครงกระดูก', 'ปีศาจ', 'หมาป่า', 'สไลม์', 'โกเลม', 'แมงมุม', 'ออร์ค', 'โทรล',
+    'บอส', 'มอนสเตอร์', 'สัตว์ประหลาด', 'อสูร', 'วิญญาณ', 'ผี', 'แวมไพร์', 'มนุษย์หมาป่า', 'โจร', 'ทหาร',
+    'อัศวิน', 'นักรบ', 'จอมเวทย์', 'พ่อมด', 'แม่มด', 'นักธนู', 'นักบวช', 'พระ',
+    // ── Thai: สิ่งของ/แนวคิด ──
+    'ระบบ', 'ทักษะ', 'ไอเท็ม', 'เควส', 'ภารกิจ', 'การต่อสู้', 'สงคราม', 'เวทมนตร์', 'อาวุธ', 'เกราะ',
+    'ยา', 'คริสตัล', 'อัญมณี', 'แสง', 'ความมืด', 'ไฟ', 'น้ำแข็ง', 'ลม', 'สายฟ้า', 'น้ำ', 'ดิน', 'เงา',
+    'คำสาป', 'พร', 'มนตร์', 'อุปสรรค', 'กับดัก', 'หีบ', 'รางวัล', 'ความตาย', 'ชีวิต', 'เลือด', 'พิษ',
+    'ม้วนกระดาษ', 'หนังสือ', 'แผนที่', 'แหวน', 'สร้อย', 'เสื้อคลุม', 'ไม้เท้า', 'คฑา', 'ธนู', 'ลูกศร', 'ขวาน',
+    'หอก', 'มีดสั้น', 'ดาบ', 'โล่', 'กุญแจ', 'สมบัติ',
+    // ── Thai: คำกริยา/คุณศัพท์ที่ AI มักจะ bold ──
+    'สำคัญ', 'อันตราย', 'ทรงพลัง', 'แข็งแกร่ง', 'ลึกลับ', 'น่ากลัว', 'โบราณ', 'ตำนาน', 'ศักดิ์สิทธิ์',
+    'ต้องห้าม', 'ลับ', 'ซ่อน', 'สุดท้าย', 'สูงสุด', 'ราชวงศ์', 'ศักดิ์สิทธิ์', 'ปีศาจ', 'มืด',
+    'เป็นไปไม่ได้', 'เหลือเชื่อ', 'วิกฤต', 'ร้ายแรง', 'มหึมา', 'ฉับพลัน', 'รุนแรง', 'สมบูรณ์', 'สมบูรณ์แบบ',
+    'ตัดสินใจ', 'กรุณา', 'โปรด', 'ระวัง', 'หยุด', 'จบ', 'เริ่ม', 'ต่อสู้', 'โจมตี', 'ป้องกัน', 'หลบ', 'วิ่ง',
+    'กระโดด', 'ตะโกน', 'กระซิบ', 'ร้องไห้', 'หัวเราะ', 'ยิ้ม', 'มอง', 'จ้อง', 'ฟัง', 'สัมผัส', 'กลิ่น',
 ]);
 
 const NOT_ITEMS = new Set([
-    'hp','mp','sp','exp','xp','gold','money','coin','coins','lv','level',
-    'str','agi','vit','int','dex','luk','atk','def','spd','matk','mdef',
-    'affection','annoyance','health','mana','stamina','energy',
-    'ทอง','เงิน','พลังชีวิต','พลังเวทย์','เลเวล','ความสนิท','ความรำคาญ',
+    'hp', 'mp', 'sp', 'exp', 'xp', 'gold', 'money', 'coin', 'coins', 'lv', 'level',
+    'str', 'agi', 'vit', 'int', 'dex', 'luk', 'atk', 'def', 'spd', 'matk', 'mdef',
+    'affection', 'annoyance', 'health', 'mana', 'stamina', 'energy',
+    'ทอง', 'เงิน', 'พลังชีวิต', 'พลังเวทย์', 'เลเวล', 'ความสนิท', 'ความรำคาญ',
 ]);
 
 /** Safely show a toastr notification */
@@ -103,7 +154,7 @@ class StatDetector {
         const detected = {};
         // FIX: Create fresh regex each call to avoid stale lastIndex
         const rxWithMax = new RegExp(`(?:^|${STAT_EMOJI_PREFIX})\\s*([${STAT_NAME_CHARS}]{1,20}(?:\\s[${STAT_NAME_CHARS}]{1,10})?)\\s*[:：]\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*/\\s*(\\d+(?:\\.\\d+)?)`, 'gm');
-        const rxPlain   = new RegExp(`(?:^|${STAT_EMOJI_PREFIX})\\s*([${STAT_NAME_CHARS}]{1,20}(?:\\s[${STAT_NAME_CHARS}]{1,10})?)\\s*[:：]\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*(?=[,\\s\\]\\)|;\\n\\r]|$)`, 'gm');
+        const rxPlain = new RegExp(`(?:^|${STAT_EMOJI_PREFIX})\\s*([${STAT_NAME_CHARS}]{1,20}(?:\\s[${STAT_NAME_CHARS}]{1,10})?)\\s*[:：]\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*(?=[,\\s\\]\\)|;\\n\\r]|$)`, 'gm');
 
         for (const m of text.matchAll(rxWithMax)) {
             const name = m[1].trim(), valStr = m[2];
@@ -124,8 +175,10 @@ class StatDetector {
         if (!name || name.length < 2 || name.length > 20) return false;
         const l = name.toLowerCase();
         if (STAT_IGNORE_WORDS.has(l)) return false;
-        // Accept known stats, custom universe stats, or any value within range
-        return KNOWN_STATS.has(l) || this._dynamicStats?.has(l) || Math.abs(value) <= 99999;
+        // FIX BUG-H: Only accept known stat names or custom universe stats.
+        // Previously: any name:number pair was accepted (Math.abs(value) <= 99999),
+        // causing massive false positives from narrative text like "อาวุธ: 3"
+        return KNOWN_STATS.has(l) || (this._dynamicStats?.has(l) ?? false);
     }
 
     /** Allow custom universe stat names to pass validation */
@@ -175,7 +228,7 @@ class DataEngine {
 
     static calcStage(aff, ann) {
         let s = 0;
-        if      (aff >= 90) s = 6;
+        if (aff >= 90) s = 6;
         else if (aff >= 75) s = 5;
         else if (aff >= 60) s = 4;
         else if (aff >= 40) s = 3;
@@ -188,7 +241,7 @@ class DataEngine {
     recalcDerived() {
         const p = this.player;
         // Use dynamic stat names; fall back to VIT/INT for standard RPG, or first two stats for other universes
-        const sn = p.universe?.statNames || ['STR','AGI','VIT','INT','DEX','LUK'];
+        const sn = p.universe?.statNames || ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'];
         const vitStat = sn.includes('VIT') ? 'VIT' : sn[2] || sn[0];
         const intStat = sn.includes('INT') ? 'INT' : sn[3] || sn[1];
         p.hpMax = BASE_HP + ((p.stats[vitStat] || 5) * HP_PER_VIT);
@@ -243,7 +296,7 @@ class DataEngine {
         if (!name) return null;
         const searchAlias = name.trim().toLowerCase();
         const defaultKey = DataEngine.sanitizeId(name);
-        
+
         // 1. Exact match: key, name, or alias
         for (const [key, bot] of Object.entries(this.bots)) {
             if (key === defaultKey || (bot.name && bot.name.toLowerCase() === searchAlias)) {
@@ -253,41 +306,55 @@ class DataEngine {
                 return key;
             }
         }
-        
-        // 2. Fuzzy match: substring containment (min 4 chars to prevent false merges like Yu/Yuki)
+
+        // 2. Fuzzy match: substring containment (min 4 chars, require 60%+ overlap)
         if (searchAlias.length >= 4) {
             for (const [key, bot] of Object.entries(this.bots)) {
                 const botName = (bot.name || '').toLowerCase();
                 const botNick = (bot.nickname || '').toLowerCase();
-                // Check if search term contains or is contained by existing bot name/nickname
-                if (botName.length >= 4 && (botName.includes(searchAlias) || searchAlias.includes(botName))) {
-                    // Auto-add as alias for instant future matching
-                    if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
-                        bot.aliases.push(name.trim());
-                    }
+                // FIX BUG-I: Require that the shorter name is at least 60% of the longer name's length.
+                // This prevents merging unrelated NPCs like "คาร์ล" and "คาร์ลอส"
+                const overlapOk = (a, b) => {
+                    const shorter = Math.min(a.length, b.length);
+                    const longer = Math.max(a.length, b.length);
+                    return shorter / longer >= 0.8;
+                };
+                // FIX BUG-01: getBotKey is now a pure lookup — no alias mutation.
+                // Alias creation is handled explicitly by callers (detectNPCsFromMessage, etc.)
+                if (botName.length >= 4 && (botName.includes(searchAlias) || searchAlias.includes(botName)) && overlapOk(botName, searchAlias)) {
                     return key;
                 }
-                if (botNick.length >= 4 && botNick !== botName && (botNick.includes(searchAlias) || searchAlias.includes(botNick))) {
-                    if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
-                        bot.aliases.push(name.trim());
-                    }
+                if (botNick.length >= 4 && botNick !== botName && (botNick.includes(searchAlias) || searchAlias.includes(botNick)) && overlapOk(botNick, searchAlias)) {
                     return key;
                 }
                 // Check all aliases for substring match
                 if (bot.aliases) {
                     for (const alias of bot.aliases) {
                         const al = alias.trim().toLowerCase();
-                        if (al.length >= 4 && (al.includes(searchAlias) || searchAlias.includes(al))) {
-                            if (!bot.aliases.some(a => a.toLowerCase() === searchAlias)) {
-                                bot.aliases.push(name.trim());
-                            }
+                        if (al.length >= 4 && (al.includes(searchAlias) || searchAlias.includes(al)) && overlapOk(al, searchAlias)) {
                             return key;
                         }
                     }
                 }
             }
         }
-        
+
+        // 2b. Word-set overlap for multi-word names (handles word-order changes)
+        // e.g. "Mikoto Misaka" ↔ "Misaka Mikoto" → same NPC
+        const wordsSearch = searchAlias.split(/[\s_]+/).filter(w => w.length >= 2);
+        if (wordsSearch.length >= 2) {
+            for (const [key, bot] of Object.entries(this.bots)) {
+                for (const cmpName of [bot.name, bot.nickname, ...(bot.aliases || [])].filter(Boolean)) {
+                    const wordsCmp = cmpName.toLowerCase().split(/[\s_]+/).filter(w => w.length >= 2);
+                    if (wordsCmp.length < 2) continue;
+                    const common = wordsSearch.filter(w => wordsCmp.includes(w));
+                    if (common.length >= 2 && common.length / Math.max(wordsSearch.length, wordsCmp.length) >= 0.5) {
+                        return key;
+                    }
+                }
+            }
+        }
+
         // 3. If nothing matches, return the new sanitized key
         return defaultKey;
     }
@@ -397,7 +464,7 @@ class DataEngine {
             const existing = ctx.chatMetadata[META_KEY] || {};
             ctx.chatMetadata[META_KEY] = { ...existing, ...cloned };
             saveMetadataDebounced();
-            
+
             this.injectTrackerContext();
         } catch (err) { console.error(LOG_PREFIX, 'Save error:', err); }
     }
@@ -416,78 +483,70 @@ class DataEngine {
         const expName = p.universe?.expName || 'EXP';
         const goldName = p.universe?.goldName || 'Gold';
         const lvlName = p.universe?.levelName || 'Level';
-        
-        // ── Build compact JSON-based status ──
+
         const statsObj = {};
         for (const k of statList) statsObj[k] = p.stats[k] || 0;
-        
-        const playerData = {
-            lv: p.universe?.levelDisplay || p.level || 1,
-            hp: `${p.hp}/${p.hpMax}`,
-            mp: `${p.mp}/${p.mpMax}`,
-            exp: `${p.exp}/${p.expMax}`,
-            gold: p.gold,
-            stats: statsObj
-        };
-        
-        if (p.conditions?.length > 0) {
-            playerData.conditions = p.conditions.map(c => `${c.name}(${c.turnsLeft}t)`);
-        }
+
+        // ── Build current state summary ──
+        const statLine = statList.map(k => `${k}:${statsObj[k]}`).join(' ');
+        const lvDisplay = p.universe?.levelDisplay || p.level || 1;
+
+        let stateBlock = `📊 CURRENT STATE\n`;
+        stateBlock += `${lvlName}: ${lvDisplay} | HP: ${p.hp}/${p.hpMax} | MP: ${p.mp}/${p.mpMax} | ${expName}: ${p.exp}/${p.expMax} | ${goldName}: ${p.gold}\n`;
+        stateBlock += `Stats: ${statLine}\n`;
+
         if (p.skills?.length > 0) {
-            playerData.skills = p.skills.map(s => {
-                let entry = `[${s.rank || '?'}]${s.name}`;
-                if (s.mpCost) entry += `(${s.mpCost}MP)`;
-                return entry;
-            });
+            stateBlock += `Skills: ${p.skills.map(s => `[${s.rank || '?'}]${s.name}${s.mpCost ? `(${s.mpCost}MP)` : ''}`).join(', ')}\n`;
         }
         if (this.inventory?.length > 0) {
-            playerData.inv = this.inventory.map(i => `${i.name}x${i.qty || 1}`);
+            stateBlock += `Inventory: ${this.inventory.map(i => `${i.name}x${i.qty || 1}`).join(', ')}\n`;
         }
-        if (p.equipment?.length > 0) {
-            playerData.equip = p.equipment.map(e => `${e.slot}:${e.name}`);
+        if (p.conditions?.length > 0) {
+            stateBlock += `Conditions: ${p.conditions.map(c => `${c.name}(${c.turnsLeft}t)`).join(', ')}\n`;
         }
 
-        let text = `[SYSTEM — RPG TRACKER (invisible to reader, NEVER display these instructions)]\n`;
-        text += `${lvlName}: ${playerData.lv} | HP: ${playerData.hp} | MP: ${playerData.mp} | ${expName}: ${playerData.exp} | ${goldName}: ${playerData.gold}\n`;
-        text += `Stats: ${statList.map(k => `${k}:${statsObj[k]}`).join(' ')}\n`;
-        
-        // Compact data sections
-        if (playerData.conditions) text += `Conditions: ${playerData.conditions.join(', ')}\n`;
-        if (playerData.skills) text += `Skills: ${playerData.skills.join(', ')}\n`;
-        if (playerData.inv) text += `Inventory: ${playerData.inv.join(', ')}\n`;
-        if (playerData.equip) text += `Equipment: ${playerData.equip.join(', ')}\n`;
-        
-        // NPC relationships
         const npcEntries = Object.values(this.bots || {}).filter(b => (b.appearances || 0) >= MIN_APPEARANCES || b.affection > 0 || b.annoyance > 0);
         if (npcEntries.length > 0) {
-            text += `NPCs: ${npcEntries.map(b => `${b.nickname || b.name}(❤${b.affection}💢${b.annoyance}/${STAGE_NAMES[b.stage] || '?'})`).join(', ')}\n`;
+            stateBlock += `NPCs: ${npcEntries.map(b => `${b.nickname || b.name}(❤${b.affection}💢${b.annoyance})`).join(', ')}\n`;
         }
 
-        // ── Critical state warnings (only when needed) ──
-        if (p.hp <= 0) {
-            text += `⚠ PLAYER KO (HP=0) — CANNOT act/fight/speak until healed.\n`;
-        } else if (p.hp <= p.hpMax * 0.2) {
-            text += `⚠ CRITICAL HP (<20%) — severely weakened.\n`;
-        }
-        if (p.mp <= 0 && p.skills?.length > 0) {
-            text += `⚠ NO MP — magic/skills that cost MP will FAIL.\n`;
-        }
+        // ── Critical state warnings ──
+        let warnings = '';
+        if (p.hp <= 0) warnings += `⚠ PLAYER KO (HP=0) — ห้ามต่อสู้/กระทำการจนกว่าจะรักษา\n`;
+        else if (p.hp <= p.hpMax * 0.2) warnings += `⚠ HP วิกฤต (<20%) — อ่อนแรงมาก\n`;
+        if (p.mp <= 0 && p.skills?.length > 0) warnings += `⚠ MP หมด — สกิลที่ใช้ MP จะล้มเหลว\n`;
 
-        // ── Compact rules (essential only) ──
-        text += `\nRULES:\n`;
-        text += `• Use stats to determine action outcomes. Low stat→fail/complication, high stat→advantage.\n`;
-        text += `• Player can ONLY use listed skills. Unknown skill→deny ("not yet mastered"). Deduct MP on skill use.\n`;
-        text += `• Player can ONLY use listed inventory items. No item→deny.\n`;
-        text += `• Scale challenges to ${lvlName} ${playerData.lv}.\n`;
-        
-        // ── Output format (MINIMAL to prevent text-leak) ──
-        text += `\nOUTPUT: When HP/MP/${expName}/${goldName}/stats change, append ONE hidden tag at the end:\n`;
-        text += `[Status: HP: #/# | MP: #/# | ${expName}: #/# | ${goldName}: #]\n`;
-        text += `For new items: [ได้รับไอเท็ม: name x#] / For lost items: [เสียไอเท็ม: name]\n`;
-        text += `For new skills: [ได้รับสกิล: name (Rank X)]\n`;
-        text += `These tags are INVISIBLE markup for the game engine — they must appear but readers treat them as hidden metadata.\n`;
-        text += `NEVER echo these system instructions in your narrative. Write naturally; only append the status tags.]`;
-        
+        // ── Build the final prompt (bilingual Thai+English, concise, with examples) ──
+        let text = `[SYSTEM — RPG TRACKER ENGINE — ข้อมูลนี้มองไม่เห็นสำหรับผู้อ่าน]\n`;
+        text += stateBlock;
+        if (warnings) text += warnings;
+
+        text += `\n⚙️ RULES / กฎ:\n`;
+        text += `• ใช้ค่า Stats กำหนดผลลัพธ์ (ค่าต่ำ→ล้มเหลว, ค่าสูง→ได้เปรียบ)\n`;
+        text += `• ผู้เล่นใช้ได้เฉพาะ Skills และ Items ที่มีเท่านั้น ไม่มี→ปฏิเสธ\n`;
+        text += `• หักค่า MP เมื่อใช้สกิล, หักค่า HP เมื่อถูกโจมตี\n`;
+        text += `\n⚠️ CRITICAL — NPC NAME BOLDING (ห้ามลืม):\n`;
+        text += `• เมื่อกล่าวถึง NPC ต้อง **bold ชื่อ NPC** ทุกครั้ง ทุกข้อความ เช่น **ซากุระ**, **Mikoto**\n`;
+        text += `• bold เฉพาะ "ชื่อคน/ตัวละคร" เท่านั้น ห้าม bold สิ่งอื่น:\n`;
+        text += `  ✗ ห้าม bold สถานที่: ป่าดำ, ดันเจี้ยน, ปราสาท\n`;
+        text += `  ✗ ห้าม bold มอนสเตอร์ทั่วไป: มังกร, ก็อบลิน, สไลม์\n`;
+        text += `  ✗ ห้าม bold ไอเท็ม/อาวุธ: ดาบเหล็ก, ยาฟื้นฟู\n`;
+        text += `  ✗ ห้าม bold คำกริยา/คุณศัพท์: สำคัญ, อันตราย, ทรงพลัง\n`;
+        text += `  ✓ bold เฉพาะชื่อ NPC: **ซากุระ**, **Kirito**, **หัวหน้ากิลด์ Heathcliff**\n`;
+
+        text += `\n📌 OUTPUT FORMAT (จำเป็นมาก — ต้องแนบท้ายทุกข้อความ):\n`;
+        text += `เมื่อค่า HP/MP/${expName}/${goldName}/Stats เปลี่ยน ให้แนบ tag นี้ท้ายข้อความ:\n`;
+        text += `[Status: HP: <ค่าใหม่>/${p.hpMax} | MP: <ค่าใหม่>/${p.mpMax} | ${expName}: <ค่าใหม่>/${p.expMax} | ${goldName}: <ค่าใหม่>]\n\n`;
+        text += `ตัวอย่าง: ถ้าผู้เล่นถูกโจมตีเสีย 30 HP และใช้สกิลเสีย 15 MP:\n`;
+        text += `[Status: HP: ${Math.max(0, p.hp - 30)}/${p.hpMax} | MP: ${Math.max(0, p.mp - 15)}/${p.mpMax} | ${expName}: ${Math.min(p.expMax, p.exp + 20)}/${p.expMax} | ${goldName}: ${p.gold + 50}]\n`;
+        text += `[ได้รับไอเท็ม: ยาฟื้นฟู x1]\n`;
+        text += `[เสียไอเท็ม: ดาบเหล็ก]\n`;
+        text += `[ได้รับสกิล: Fireball (Rank B)]\n`;
+        text += `เมื่อความสัมพันธ์กับ NPC เปลี่ยน:\n`;
+        text += `[Affection: +5] หรือ [Annoyance: +3]\n\n`;
+        text += `ห้ามใช้ HTML, ห้ามใช้ <div>, ใช้เฉพาะ [วงเล็บเหลี่ยม] เท่านั้น\n`;
+        text += `Tags เหล่านี้คือ metadata ที่ซ่อนอยู่ — เขียนเรื่องตามปกติ แล้วแนบ tags ท้ายสุด]`;
+
         if (typeof setExtensionPrompt === 'function') {
             setExtensionPrompt('azure_codex_tracker', text, extension_prompt_types.IN_CHAT, 1, false);
         }
@@ -504,12 +563,14 @@ class DataEngine {
             }
             this.inventory = safeClone(data?.inventory) || [];
             this.player = safeClone(data?.player) || DataEngine.defaultPlayer();
-            this._backup = safeClone(data?._backup) || null;
+            this._backup = null; // Runtime-only — never persisted to metadata
             // Migration
             this.player.gold ??= 0;
             this.player.statPoints ??= 0;
             this.player.skills ??= []; // Migration: add skills array
-            this.player.skillTrees ??= {}; 
+            this.player.equipment ??= []; // Migration: add equipment array
+            this.player.conditions ??= []; // Migration: add conditions array
+            this.player.skillTrees ??= {};
             this.player.universe ??= { levelName: 'Level', levelDisplay: String(this.player.level || '1'), expName: 'EXP', goldName: 'Gold', statNames: ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'] };
             this.player.universe.goldName ??= 'Gold'; // Migration: add goldName if missing
             if (!this.player.stats || typeof this.player.stats !== 'object') this.player.stats = /** @type {Object<string,number>} */ ({});
@@ -536,15 +597,15 @@ class DataEngine {
             player: safeClone(this.player)
         };
     }
-    
+
     restore() {
         if (!this._backup) return;
-        
+
         // FIX C2: Clone backup first, then apply current aliases/nicknames to the CLONE
         // This prevents permanent contamination of the backup data
         const safeClone = (obj) => obj ? JSON.parse(JSON.stringify(obj)) : null;
         const restoredBots = safeClone(this._backup.bots) || {};
-        
+
         // Preserve user-edited aliases, nicknames, and departments in the restored copy
         for (const [k, currentBot] of Object.entries(this.bots)) {
             if (restoredBots[k]) {
@@ -554,7 +615,7 @@ class DataEngine {
                 restoredBots[k].name = currentBot.name;
             }
         }
-        
+
         this.bots = restoredBots;
         this.inventory = safeClone(this._backup.inventory);
         this.player = safeClone(this._backup.player);
@@ -634,8 +695,8 @@ class DataEngine {
 // ═══════════════════════════════════════════
 //  UI RENDERER
 // ═══════════════════════════════════════════
-const STAGE_NAMES = ['Stranger','Acquaintance','Noticed','Interest','Tension','Attached','Devoted'];
-const STAGE_COLORS = ['#555','#5a7a92','#4a90d9','#6ab8e8','#e8a06a','#e76a6a','#ff4da6'];
+const STAGE_NAMES = ['Stranger', 'Acquaintance', 'Noticed', 'Interest', 'Tension', 'Attached', 'Devoted'];
+const STAGE_COLORS = ['#555', '#5a7a92', '#4a90d9', '#6ab8e8', '#e8a06a', '#e76a6a', '#ff4da6'];
 
 class UIRenderer {
     constructor(data, callbacks) {
@@ -646,7 +707,7 @@ class UIRenderer {
     }
 
     static esc(t) { const d = document.createElement('div'); d.textContent = String(t ?? ''); return d.innerHTML; }
-    static escAttr(t) { return String(t ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    static escAttr(t) { return String(t ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
     static getInsight(aff, ann) {
         if (ann >= 90) return 'ระคายเคืองสุดๆ';
@@ -765,17 +826,17 @@ class UIRenderer {
             <div class="sao-bars">
                 <div class="sao-bar-row"><span class="sao-bar-label hp-label">HP</span><div class="sao-bar"><div class="sao-bar-fill sao-hp" style="width:${hpPct}%"></div></div><span class="sao-bar-val">${p.hp} / ${p.hpMax}</span></div>
                 <div class="sao-bar-row"><span class="sao-bar-label mp-label">MP</span><div class="sao-bar"><div class="sao-bar-fill sao-mp" style="width:${mpPct}%"></div></div><span class="sao-bar-val">${p.mp} / ${p.mpMax}</span></div>
-                <div class="sao-bar-row"><span class="sao-bar-label exp-label" title="${esc(p.universe?.expName || 'EXP')}">${esc((p.universe?.expName || 'EXP').substring(0,3))}</span><div class="sao-bar"><div class="sao-bar-fill sao-exp" style="width:${expPct}%"></div></div><span class="sao-bar-val">${p.exp} / ${p.expMax}</span></div>
+                <div class="sao-bar-row"><span class="sao-bar-label exp-label" title="${esc(p.universe?.expName || 'EXP')}">${esc((p.universe?.expName || 'EXP').substring(0, 3))}</span><div class="sao-bar"><div class="sao-bar-fill sao-exp" style="width:${expPct}%"></div></div><span class="sao-bar-val">${p.exp} / ${p.expMax}</span></div>
             </div>
             <div class="sao-gold-row">💰 <span class="sao-gold-val">${goldStr}</span> ${esc(p.universe?.goldName || 'Gold')}</div>
             ${p.hp <= 0 ? `<div class="sao-points-banner" style="color:#ef5350;border-color:rgba(239,83,80,.3);background:rgba(239,83,80,.06);animation:none;">💀 PLAYER KO — HP = 0</div>` : ''}
             ${p.conditions && p.conditions.length > 0 ? `<div class="sao-conditions-row">${p.conditions.map(c => {
-                const isDebuff = ['Poisoned','Stunned','Burning','Frozen','Paralyzed','Weakened','Blinded'].includes(c.name);
-                return `<span class="sao-condition-badge ${isDebuff ? 'debuff' : 'buff'}" title="${esc(c.effect)}">${isDebuff ? '💀' : '✨'} ${esc(c.name)} (${c.turnsLeft})</span>`;
-            }).join('')}</div>` : ''}
+            const isDebuff = ['Poisoned', 'Stunned', 'Burning', 'Frozen', 'Paralyzed', 'Weakened', 'Blinded'].includes(c.name);
+            return `<span class="sao-condition-badge ${isDebuff ? 'debuff' : 'buff'}" title="${esc(c.effect)}">${isDebuff ? '💀' : '✨'} ${esc(c.name)} (${c.turnsLeft})</span>`;
+        }).join('')}</div>` : ''}
             ${p.statPoints > 0 ? `<div class="sao-points-banner">⚡ UNUSED STAT POINTS: <b>${p.statPoints}</b></div>` : ''}
             <div class="sao-stats-grid">`;
-            
+
         const currentStats = p.universe?.statNames || SAO_STATS;
         for (const stat of currentStats) {
             const val = p.stats[stat] ?? 0;
@@ -918,8 +979,12 @@ class AzureCodexController {
         this._isBulkScanning = false;
         this._personaSynced = false; // FIX M3: cache flag to avoid redundant persona regex
         this._swipeRestorePending = false; // FIX: flag for swipe restore
-        this._lastContentFingerprint = ''; // FIX: content-based dedup replaces time-based debounce
+        this._lastContentFingerprint = ''; // FIX: content-based dedup
         this.lastProcessedIdx = -1;
+        this._currentProcessingIdx = -1; // FIX: track current message idx for condition expiry
+        this._renderQueued = false; // FIX BUG-V: microtask render debounce flag
+        this._dragAbortController = null; // FIX BUG-06: AbortController for drag/resize event cleanup
+        this._justSanitizedIds = new Set(); // FIX BUG-09: prevent sanitizer re-entry from MutationObserver
 
         // FIX: UIRenderer uses callbacks, no global reference
         this.ui = new UIRenderer(this.data, {
@@ -993,7 +1058,7 @@ class AzureCodexController {
                         const isLearned = learnedSkills.some(ls => ls.name.toLowerCase() === sk.name.toLowerCase());
                         const isUnlockable = !isLearned && (val >= sk.req);
                         const isLocked = !isLearned && (val < sk.req);
-                        
+
                         const rc = RANK_COLORS[sk.rank?.toUpperCase()] || '#8aa8c0';
                         const opacity = isLocked ? 'opacity:0.5;' : '';
                         const learnedBg = isLearned ? 'background:rgba(51,204,255,.05) !important;' : '';
@@ -1015,7 +1080,7 @@ class AzureCodexController {
                         </button>`;
                     });
                 }
-                
+
                 html += `</div></div>`;
 
                 let selectedIdx = -1;
@@ -1041,7 +1106,7 @@ class AzureCodexController {
                 if (ok && selectedIdx !== -1) {
                     const chosen = treeTokens[selectedIdx];
                     this.data.addSkill(chosen.name, chosen.rank, chosen.desc, stat);
-                    
+
                     if (this.data._backup?.player?.skills) {
                         this.data._backup.player.skills.push({ name: chosen.name, rank: chosen.rank, desc: chosen.desc, stat: stat });
                     }
@@ -1077,6 +1142,18 @@ class AzureCodexController {
                 if (!ctx.chat || !ctx.characterId) {
                     notify('warning', 'กรุณาเปิดแชทก่อนใช้ Sync Universe', '⚠ No Active Chat');
                     return;
+                }
+
+                // FIX BUG-11: Warn before resetting stats/skills if user has customized them
+                const hasCustomData = this.data.player.skills.length > 0 ||
+                    Object.values(this.data.player.stats).some(v => v !== 5) ||
+                    this.data.player.statPoints > 0;
+                if (hasCustomData) {
+                    const confirmSync = await callGenericPopup(
+                        '<h3>⚠ Sync Universe</h3><p>การ Sync จะ <b>รีเซ็ต Stats ทั้งหมดเป็น 5</b> และ <b>ลบ Skills/Skill Trees ทั้งหมด</b></p><p style="color:#e74c3c;font-size:.85rem">ข้อมูลที่จัดสรรด้วยตนเองจะหายไป ต้องการดำเนินการต่อหรือไม่?</p>',
+                        POPUP_TYPE.CONFIRM,
+                    );
+                    if (!confirmSync) return;
                 }
 
                 const btn = document.querySelector('.sao-sync-universe-btn');
@@ -1117,7 +1194,7 @@ You must provide EXACTLY 6 short stat names in "statNames" (max 4 letters each).
 Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothing else!]`;
 
                     const reply = await generateQuietPrompt({ quietPrompt: prompt });
-                    
+
                     try {
                         // Robust JSON extraction: handle nested objects (epithets)
                         let uni = null;
@@ -1150,7 +1227,7 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                                 }
                             }
                         }
-                        
+
                         if (uni && uni.levelName && uni.statNames && uni.statNames.length === 6) {
                             const oldLevelNum = this.data.player.level || 1;
                             const oldGold = this.data.player.gold || 0;
@@ -1160,15 +1237,15 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                             const oldMpMax = this.data.player.mpMax;
                             const oldExp = this.data.player.exp;
                             const oldExpMax = this.data.player.expMax;
-                            
+
                             this.data.player.universe = {
                                 levelName: uni.levelName,
                                 levelDisplay: String(uni.levelDisplay || oldLevelNum),
                                 expName: uni.expName || 'EXP',
                                 goldName: uni.goldName || 'Gold',
-                                statNames: uni.statNames.map((/** @type {string} */ s) => s.toUpperCase().substring(0,4))
+                                statNames: uni.statNames.map((/** @type {string} */ s) => s.toUpperCase().substring(0, 4))
                             };
-                            
+
                             // Only remap stats if stat names actually changed
                             this.data.player.stats = {};
                             for (const s of this.data.player.universe.statNames) {
@@ -1177,17 +1254,17 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                             this.data.player.statPoints = 0;
                             this.data.player.skillTrees = {};
                             this.data.player.skills = [];
-                            
+
                             // Recalculate derived stats (hpMax/mpMax) from new stat values
                             this.data.recalcDerived();
-                            
+
                             // Preserve progression data, capped to new maximums
                             this.data.player.gold = oldGold;
                             this.data.player.hp = Math.min(oldHp, this.data.player.hpMax);
                             this.data.player.mp = Math.min(oldMp, this.data.player.mpMax);
                             this.data.player.exp = oldExp;
                             this.data.player.expMax = oldExpMax;
-                            
+
                             // Apply NPC epithets from the same response (free, no extra API call)
                             if (uni.epithets && typeof uni.epithets === 'object') {
                                 let epithetCount = 0;
@@ -1208,8 +1285,8 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                             throw new Error("Invalid output layout");
                         }
                     } catch (e) {
-                         console.error("Universe Sync JSON Parse Error:", e, reply);
-                         notify('error', 'ระบบล้มเหลวในการอ่านโครงสร้างสเตตัส ลองกดอีกครั้ง!', 'Parse Error');
+                        console.error("Universe Sync JSON Parse Error:", e, reply);
+                        notify('error', 'ระบบล้มเหลวในการอ่านโครงสร้างสเตตัส ลองกดอีกครั้ง!', 'Parse Error');
                     }
 
                 } catch (err) {
@@ -1248,14 +1325,14 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                 try {
                     const pUser = /** @type {any} */ (window).power_user;
                     const personaStr = pUser?.persona_description || String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
-                    const statArray = this.data.player.universe?.statNames || ['STR','AGI','VIT','INT','DEX','LUK'];
+                    const statArray = this.data.player.universe?.statNames || ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'];
 
                     // ── JSON-based prompt (same approach as Sync Universe for reliability) ──
                     const exampleSkills = {};
                     exampleSkills[statArray[0]] = [
-                        {"name":"Power Slash","rank":"F","req":10,"desc":"ฟาดคลื่นดาบโจมตีศัตรู"},
-                        {"name":"War Cry","rank":"C","req":30,"desc":"กระตุ้นพลังให้ตัวเองในการต่อสู้"},
-                        {"name":"Titan Strike","rank":"A","req":50,"desc":"ทุบพื้นสร้างแผ่นดินไหวโจมตีวงกว้าง"}
+                        { "name": "Power Slash", "rank": "F", "req": 10, "desc": "ฟาดคลื่นดาบโจมตีศัตรู" },
+                        { "name": "War Cry", "rank": "C", "req": 30, "desc": "กระตุ้นพลังให้ตัวเองในการต่อสู้" },
+                        { "name": "Titan Strike", "rank": "A", "req": 50, "desc": "ทุบพื้นสร้างแผ่นดินไหวโจมตีวงกว้าง" }
                     ];
 
                     const prompt = `[System note: Evaluate the User's Persona.
@@ -1407,38 +1484,88 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
 
     }
 
-    saveAndRender() { this.data.save(); this.ui.render(); }
+    // FIX BUG-V: processMessageLive calls 4-5 detectors that each call saveAndRender().
+    // save() is fine (saveMetadataDebounced internally), but render() does full DOM rebuild.
+    // Debounce render via microtask: runs only ONCE after all detectors complete synchronously.
+    saveAndRender() {
+        this.data.save();
+        if (!this._renderQueued) {
+            this._renderQueued = true;
+            queueMicrotask(() => {
+                this._renderQueued = false;
+                this.ui.render();
+            });
+        }
+    }
 
     // ── NPC Detection ──
     detectNPCsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
         const boldRx = new RegExp(BOLD_RX_SRC, 'g');
         const allNames = [];
+        const namePositions = new Map(); // FIX BUG-NPC6: store actual regex match positions
         let m;
-        
+
         let playerName = '';
         let botCharName = '';
-        try { 
+        try {
             playerName = (getContext().name1 || '').trim().toLowerCase();
             botCharName = (getContext().name2 || '').trim().toLowerCase();
-        } catch(e){}
+        } catch (e) { }
 
+        // FIX BUG-NPC2: Split multi-word bot char name into parts for individual filtering
+        const botNameParts = new Set(
+            botCharName.split(/\s+/).filter(p => p.length >= 2)
+        );
+
+        let _debugSkipped = [];
         while ((m = boldRx.exec(text)) !== null) {
             const name = m[1].trim();
             const lower = name.toLowerCase();
-            
-            if (lower === playerName) continue;
-            if (COMMON_WORDS.has(lower) || KNOWN_STATS.has(lower) || STAT_IGNORE_WORDS.has(lower) || NOT_ITEMS.has(lower)) continue;
-            
-            // If this name matches the main bot character, skip — the bot itself is not an "NPC"
-            if (botCharName && (lower === botCharName || botCharName.includes(lower) || lower.includes(botCharName))) continue;
-            
+
+            if (lower === playerName) { _debugSkipped.push(`${name}(=player)`); continue; }
+            if (COMMON_WORDS.has(lower)) { _debugSkipped.push(`${name}(common)`); continue; }
+            if (KNOWN_STATS.has(lower) || STAT_IGNORE_WORDS.has(lower) || NOT_ITEMS.has(lower)) { _debugSkipped.push(`${name}(stat/ignore)`); continue; }
+
+            // FIX BUG-NPC4: Skip words that are locations, monsters, concepts, etc.
+            if (NOT_NPC_WORDS.has(lower)) { _debugSkipped.push(`${name}(not-npc-word)`); continue; }
+
+            // FIX BUG-NPC2: Bot character name filter — exact match OR individual name parts.
+            // e.g. bot="Misaka Mikoto" → skip "Misaka", "Mikoto", "Misaka Mikoto"
+            if (botCharName && (lower === botCharName || botNameParts.has(lower))) { _debugSkipped.push(`${name}(=bot)`); continue; }
+
+            // FIX BUG-NPC4: Reject single lowercase-only English words that aren't proper nouns.
+            // Real NPC names are capitalized (e.g. "Dragon" OK as a name, but "dragon" isn't).
+            // Note: this only applies to pure ASCII words, not Thai/CJK.
+            if (/^[a-z][a-z\-'\.]*$/.test(name) && !name.includes(' ')) { _debugSkipped.push(`${name}(lowercase-en)`); continue; }
+
+            // FIX: Reject names that are all-punctuation (e.g. "...", "---", "'s")
+            if (/^[\-'\.\s]+$/.test(name)) { _debugSkipped.push(`${name}(all-punct)`); continue; }
+            // FIX: Reject names starting with punctuation (e.g. "-abc", "'s name", ".test")
+            if (/^[\-'\.]/.test(name)) { _debugSkipped.push(`${name}(starts-punct)`); continue; }
+
+            // FIX RC-5: Reject "Adjective + Generic Noun" patterns that AI loves to bold
+            if (/^(?:Unknown|Mysterious|Strange|Dark|Evil|Holy|Young|Old|Little|Big|Great|Small|Lone|Lost|Fallen|Ancient|Mad|Blind|Silent|Dead|The|A|An)\s/i.test(name)) { _debugSkipped.push(`${name}(adj-noun)`); continue; }
+            // FIX RC-5: Reject names ending with generic role nouns (multi-word only)
+            if (name.includes(' ') && /(?:Guild|Master|Owner|Guard|Soldier|Woman|Man|Girl|Boy|Child|Elder|King|Queen|Prince|Princess|Lord|Lady|Chief|Leader|Commander|Captain|Warrior|Hunter|Merchant|Traveler|Stranger|Servant|Knight|Priest|Priestess|Goddess|God|Demon|Spirit|Monster|Beast|Creature)$/i.test(name)) { _debugSkipped.push(`${name}(generic-role)`); continue; }
+            // FIX RC-5: Reject game system terms
+            if (/^(?:Critical|Game|Level|Skill|Quest|Status|System|Item|Inventory|Log|Menu|HP|MP|EXP|New|Side|Main|Sub|Boss|Mini|Final|Special|Unique|Rare|Epic|Common)\s/i.test(name)) { _debugSkipped.push(`${name}(system-term)`); continue; }
+            // FIX RC-5: Reject common Thai emphasis phrases that aren't names
+            if (/^(?:ไม่มีทาง|ช่วยด้วย|หยุดนะ|ตายแล้ว|ระวังนะ|อย่านะ|ยอมแพ้|เป็นไปได้|มาเถอะ|ไปกันเถอะ|ขอบคุณ|สู้ๆ|เก่งมาก|ทำลาย|ปลุก|ตื่นเถอะ|หนีไป|รักษา|ดูแล|โอ้โห|บ้าไปแล้ว|เชี่ย|โคตร|แม่งเอ๊ย|ว้าว|เฮ้ย|โห)$/i.test(name)) { _debugSkipped.push(`${name}(thai-excl)`); continue; }
+
             if (name.length >= 2) {
                 allNames.push(name);
+                namePositions.set(name, m.index); // FIX BUG-NPC6: store from regex match
+            } else {
+                _debugSkipped.push(`${name}(too short)`);
             }
         }
-        
-        // Removed strictly Thai filter to allow bilingual RPGs (English NPCs with Thai Player)
+
+        // Debug: log what was found/skipped
+        if (allNames.length > 0 || _debugSkipped.length > 0) {
+            console.debug(LOG_PREFIX, `NPC scan: found=${allNames.length} [${allNames.join(', ')}] skipped=${_debugSkipped.length} [${_debugSkipped.join(', ')}] bot="${botCharName}" player="${playerName}"`);
+        }
+
         const detected = allNames;
 
         const promoted = [];
@@ -1446,9 +1573,10 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
         // FIX: Dedup names in the same message so appearances don't jump per message
         const uniqueDetected = [...new Set(detected)];
 
-        // FIX: Cross-language proximity merge — if Thai and Latin names appear
-        // near each other in the same message, they're likely the same character
-        // e.g. "**Mikoto** (มิโคโตะ)" or "**มิโคโตะ** หรือ **Mikoto**"
+        // FIX BUG-NPC5+6: Cross-language proximity merge — only merge when names appear
+        // in a parenthetical or slash pattern, not just raw proximity.
+        // e.g. "**Mikoto** (มิโคโตะ)" or "**มิโคโตะ** / **Mikoto**" → merge
+        // but "**Mikoto** หันมามอง **อาสึสะ**" → DON'T merge (different NPCs!)
         const isThai = (s) => /[\u0E00-\u0E7F]/.test(s);
         const isLatin = (s) => /[A-Za-z]{2,}/.test(s);
         for (let i = 0; i < uniqueDetected.length; i++) {
@@ -1456,12 +1584,30 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                 const a = uniqueDetected[i], b = uniqueDetected[j];
                 // Only merge if one is Thai and the other is Latin
                 if (!((isThai(a) && isLatin(b)) || (isLatin(a) && isThai(b)))) continue;
-                // Check proximity in the original text
-                const posA = text.indexOf(a);
-                const posB = text.indexOf(b);
+                // FIX BUG-NPC6: Use stored regex match positions instead of indexOf
+                const posA = namePositions.get(a) ?? text.indexOf(a);
+                const posB = namePositions.get(b) ?? text.indexOf(b);
                 if (posA === -1 || posB === -1) continue;
-                if (Math.abs(posA - posB) > 150) continue;
-                // They're close together — merge, preferring Thai as the display name
+                if (Math.abs(posA - posB) > 200) continue;
+
+                // FIX RC-3: Relaxed merge pattern — accept parenthetical, slash, dashes,
+                // Thai referring-to phrases, and very short between-text (different scripts close together)
+                const startPos = Math.min(posA, posB);
+                const endPos = Math.max(posA, posB);
+                const firstNameLen = startPos === posA ? a.length : b.length;
+                const between = text.substring(startPos + firstNameLen, endPos).replace(/\*{2}/g, '').trim();
+                const isMergePattern = (
+                    between.length <= 10 ||                   // very close & different scripts → almost certainly same entity
+                    /^[\s(（\/\-—–]/.test(between) ||          // starts with (, /, or dash
+                    /[)）\/]\s*$/.test(between) ||              // ends with ) or /
+                    /(?:หรือ|หรือว่า|อีกชื่อ|ที่ชื่อ|ที่เรียกว่า|ที่รู้จักในนาม|นั้นก็คือ|ชื่อจริง|คือ|aka|or|a\.k\.a\.?|also known as|called|named)/i.test(between)
+                );
+                if (!isMergePattern) {
+                    console.debug(LOG_PREFIX, `Cross-lang merge SKIPPED: "${a}" ↔ "${b}" (between: "${between.substring(0, 40)}")`);
+                    continue;
+                }
+
+                // They match a merge pattern — merge, preferring Thai as the display name
                 const thaiName = isThai(a) ? a : (isThai(b) ? b : null);
                 const mainName = thaiName || (posA < posB ? a : b);
                 const aliasName = mainName === a ? b : a;
@@ -1487,11 +1633,12 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
 
             // FIX: Cross-message NPC alias detection — before creating a NEW entry,
             // check if any existing NPC name appears in this message near the new name.
-            // If one is Thai and the other is Latin, they're likely the same character.
+            // FIX BUG-NPC5: Only merge if parenthetical/slash/aka pattern exists between them.
             if (!this.data.bots[key]) {
                 const nameIsThai = /[\u0E00-\u0E7F]/.test(name);
                 const nameIsLatin = /[A-Za-z]{2,}/.test(name);
-                const namePos = text.indexOf(name);
+                // FIX BUG-NPC6: Use stored position from regex match
+                const namePos = namePositions.get(name) ?? text.indexOf(name);
                 let merged = false;
 
                 if ((nameIsThai || nameIsLatin) && namePos !== -1) {
@@ -1505,21 +1652,33 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
                             // Check if the existing name appears in the same message text
                             const existPos = text.indexOf(existing);
                             if (existPos === -1) continue;
-                            // Within 200 chars of each other = likely referring to the same character
-                            if (Math.abs(namePos - existPos) <= 200) {
-                                if (!existingBot.aliases.some(a => a.toLowerCase() === name.toLowerCase())) {
-                                    existingBot.aliases.push(name);
-                                }
-                                // FIX: If the new name is Thai, promote it as the display nickname
-                                if (nameIsThai && !(/[\u0E00-\u0E7F]/.test(existingBot.nickname))) {
-                                    existingBot.nickname = name;
-                                }
-                                console.debug(LOG_PREFIX, `Cross-msg alias: "${name}" → "${existingBot.nickname}"`);
-                                existingBot.appearances = (existingBot.appearances || 0) + 1;
-                                changed = true;
-                                merged = true;
-                                break;
+                            if (Math.abs(namePos - existPos) > 200) continue;
+
+                            // FIX RC-3: Relaxed merge pattern (same as same-message merge above)
+                            const startPos = Math.min(namePos, existPos);
+                            const endPos = Math.max(namePos, existPos);
+                            const firstLen = startPos === namePos ? name.length : existing.length;
+                            const between = text.substring(startPos + firstLen, endPos).replace(/\*{2}/g, '').trim();
+                            const isMergePattern = (
+                                between.length <= 10 ||
+                                /^[\s(（\/\-—–]/.test(between) ||
+                                /[)）\/]\s*$/.test(between) ||
+                                /(?:หรือ|หรือว่า|อีกชื่อ|ที่ชื่อ|ที่เรียกว่า|ที่รู้จักในนาม|นั้นก็คือ|ชื่อจริง|คือ|aka|or|a\.k\.a\.?|also known as|called|named)/i.test(between)
+                            );
+                            if (!isMergePattern) continue;
+
+                            if (!existingBot.aliases.some(a => a.toLowerCase() === name.toLowerCase())) {
+                                existingBot.aliases.push(name);
                             }
+                            // FIX: If the new name is Thai, promote it as the display nickname
+                            if (nameIsThai && !(/[\u0E00-\u0E7F]/.test(existingBot.nickname))) {
+                                existingBot.nickname = name;
+                            }
+                            console.debug(LOG_PREFIX, `Cross-msg alias: "${name}" → "${existingBot.nickname}"`);
+                            existingBot.appearances = (existingBot.appearances || 0) + 1;
+                            changed = true;
+                            merged = true;
+                            break;
                         }
                         if (merged) break;
                     }
@@ -1528,6 +1687,16 @@ Do NOT wrap in backtick-json code fences. Output ONLY the raw JSON object, nothi
 
                 const dept = '…'; // Temporary placeholder — will be replaced by AI epithet
                 this.data.bots[key] = { id: key, name, nickname: name, dept, affection: 0, annoyance: 0, stage: 0, appearances: 0, aliases: [] };
+            } else {
+                // FIX RC-1: If getBotKey fuzzy-matched to an existing bot, record the name as alias
+                const bot = this.data.bots[key];
+                const nameLower = name.toLowerCase();
+                if (bot.name?.toLowerCase() !== nameLower &&
+                    bot.nickname?.toLowerCase() !== nameLower &&
+                    !bot.aliases?.some(a => a.toLowerCase() === nameLower)) {
+                    bot.aliases.push(name);
+                    console.debug(LOG_PREFIX, `Alias recorded via fuzzy match: "${name}" → "${bot.nickname}"`);
+                }
             }
             // FIX: If this name is Thai and the existing NPC has a non-Thai nickname, promote Thai
             if (/[\u0E00-\u0E7F]/.test(name) && this.data.bots[key] && !(/[\u0E00-\u0E7F]/.test(this.data.bots[key].nickname))) {
@@ -1638,7 +1807,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         if (!extension_settings[META_KEY]?.autoDetectStats || !text || this.data._isLoading) return;
 
         let playerName = '';
-        try { playerName = (getContext().name1 || '').trim(); } catch(e) {}
+        try { playerName = (getContext().name1 || '').trim(); } catch (e) { }
 
         const p = this.data.player;
         const expName = p.universe?.expName || 'EXP';
@@ -1781,7 +1950,8 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             const pLower = playerName.toLowerCase();
             while ((bm = boldRx.exec(text)) !== null) {
                 const nm = bm[1].trim().toLowerCase();
-                if (pLower && (nm === pLower || nm.includes(pLower) || pLower.includes(nm))) continue;
+                // FIX BUG-D: exact match only — substring was too broad for short names
+                if (pLower && nm === pLower) continue;
                 if (COMMON_WORDS.has(nm) || KNOWN_STATS.has(nm) || STAT_IGNORE_WORDS.has(nm)) continue;
                 npcZones.push({ start: bm.index, end: bm.index + bm[0].length + 250 });
             }
@@ -1854,24 +2024,24 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                     changed = true; updates.push(`Lv.${newLv}`);
                 }
             } else if (goldAliases.has(upper)) {
-                const v = applyVal(p.gold, value, null);
+                const v = Math.min(9999999, applyVal(p.gold, value, null)); // FIX BUG-B1: Cap gold
                 if (p.gold !== v) { p.gold = v; changed = true; updates.push(`${goldName}: ${v}`); }
             } else if ((p.universe?.statNames || SAO_STATS).includes(upper)) {
                 const v = applyVal(p.stats[upper] || 0, value, null);
                 if (p.stats[upper] !== v) { p.stats[upper] = v; changed = true; updates.push(`${upper}: ${v}`); }
-            } else if (['ATK','ATTACK','พลังโจมตี','ค่าโจมตี'].includes(upper)) {
+            } else if (['ATK', 'ATTACK', 'พลังโจมตี', 'ค่าโจมตี'].includes(upper)) {
                 const targetStat = (p.universe?.statNames || SAO_STATS)[0];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
-            } else if (['DEF','DEFENSE','พลังป้องกัน','ค่าป้องกัน','ARMOR'].includes(upper)) {
+            } else if (['DEF', 'DEFENSE', 'พลังป้องกัน', 'ค่าป้องกัน', 'ARMOR'].includes(upper)) {
                 const targetStat = (p.universe?.statNames || SAO_STATS)[2];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
-            } else if (['SPD','SPEED','ความเร็ว'].includes(upper)) {
+            } else if (['SPD', 'SPEED', 'ความเร็ว'].includes(upper)) {
                 const targetStat = (p.universe?.statNames || SAO_STATS)[1];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
-            } else if (['MAGIC','MATK','สติปัญญา'].includes(upper)) {
+            } else if (['MAGIC', 'MATK', 'สติปัญญา'].includes(upper)) {
                 const targetStat = (p.universe?.statNames || SAO_STATS)[3];
                 const v = applyVal(p.stats[targetStat] || 0, value, null);
                 if (p.stats[targetStat] !== v) { p.stats[targetStat] = v; changed = true; updates.push(`${targetStat}: ${v}`); }
@@ -1879,7 +2049,8 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         }
 
         if (changed && !isBulk) {
-            this._pendingChange = true;
+            this.data.recalcDerived(); // FIX BUG-C: recalc HP/MP max from narrative stat changes
+            this.saveAndRender();
             if (updates.length > 0) notify('info', updates.join(', '), '⚔ Status Updated', { timeOut: 3000 });
         }
     }
@@ -1920,10 +2091,15 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         if (affValues.length === 0 && annValues.length === 0) return;
 
         const findNearestNpc = (pos) => {
+            // FIX BUG-16: Search both backward and forward for nearest NPC
             let best = null;
+            let bestDist = Infinity;
             for (const npc of npcPositions) {
-                if (npc.pos <= pos) best = npc;
-                else break;
+                const dist = Math.abs(npc.pos - pos);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = npc;
+                }
             }
             return best?.key || null;
         };
@@ -1963,7 +2139,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         }
 
         if (changed && !isBulk) {
-            this._pendingChange = true;
+            this.saveAndRender();
             const summary = [...updatedNpcs].map(k => {
                 const b = this.data.bots[k];
                 return `${b.nickname}: ❤${b.affection} 💢${b.annoyance}`;
@@ -1975,20 +2151,24 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
     // ── Inventory Detection (tighter patterns, dedup) ──
     detectInventoryFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
-        
+
         let changed = false;
+
+        // FIX BUG-T: If this message has a [Status:...] tag, gold was already set by stat detection.
+        // Skip gold conversion in inventory to prevent double-counting.
+        const hasStrictStatusTag = /\[\s*Status\s*:\s*(?:[\w\u0E00-\u0E7F]+\s*:\s*[+-]?\d+(?:\/\d+)?\s*\|?\s*)+\]/i.test(text);
 
         // 1. Auto-detect item usage/consumption — ONLY when player is the subject
         if (!isBulk) {
             const lowerText = text.toLowerCase();
             let playerName = '';
-            try { playerName = (getContext().name1 || '').trim().toLowerCase(); } catch(e) {}
-            
+            try { playerName = (getContext().name1 || '').trim().toLowerCase(); } catch (e) { }
+
             for (const item of [...this.data.inventory]) {
                 if (item.name.length <= 2) continue;
-                
+
                 const safeName = item.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').toLowerCase();
-                
+
                 // Player-directed patterns only: "you use X", "*uses X*", "คุณใช้ X", "Player uses X"
                 const playerPatterns = [
                     // English: "you use/eat/drink X"
@@ -2002,10 +2182,10 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                     const escapedPlayer = playerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     playerPatterns.push(new RegExp(`${escapedPlayer}\\s+(?:use|eat|drink|ใช้|กิน|ดื่ม)[s]?\\s+(?:the\\s+)?${safeName}`, 'i'));
                 }
-                
+
                 const isPlayerAction = playerPatterns.some(rx => rx.test(lowerText));
                 if (!isPlayerAction) continue;
-                
+
                 // Equipment guard
                 if (/(?:sword|blade|shield|armor|gun|bow|ring|necklace|ดาบ|โล่|เกราะ|อาวุธ|ปืน|ธนู|แหวน|สร้อย)/i.test(item.name)) {
                     if (!/(?:drop|drops|throw|throws|ทิ้ง|ถอด)/i.test(lowerText)) continue;
@@ -2027,12 +2207,12 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             if (!nameRaw) return;
             let clean = nameRaw.replace(/[*_~`"'「」『』""'']/g, '').trim();
             if (!clean) return;
-            
+
             // FIX: Reject HTML tags and markdown artifacts immediately
             if (/<[^>]+>/.test(clean)) return;
             clean = clean.replace(/<[^>]*>/g, '').trim();
             if (!clean || clean.length < 2) return;
-            
+
             let qty = 1;
             const qtyMatch = clean.match(/\s*[x×]\s*(\d+)$/i);
             if (qtyMatch) {
@@ -2053,13 +2233,15 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             const pureMoneyRx = new RegExp(`^(?:${moneyTerms})$`, 'i');
             const moneyMatch = clean.match(moneyRx) || clean.match(moneyRx2);
             if (moneyMatch) {
+                // FIX BUG-T: Skip gold conversion if [Status:] tag already set gold
+                if (hasStrictStatusTag) return;
                 const goldAmt = parseInt(moneyMatch[1]);
                 if (goldAmt > 0 && goldAmt < 100000) {
                     if (isLoss) {
                         this.data.player.gold = Math.max(0, (this.data.player.gold || 0) - goldAmt);
                         losses.push(`-${goldAmt} ${this.data.player?.universe?.goldName || 'Gold'}`);
                     } else {
-                        this.data.player.gold = (this.data.player.gold || 0) + goldAmt;
+                        this.data.player.gold = Math.min(9999999, (this.data.player.gold || 0) + goldAmt); // FIX BUG-B1: Cap gold
                         gains.push(`+${goldAmt} ${this.data.player?.universe?.goldName || 'Gold'}`);
                     }
                     changed = true;
@@ -2148,7 +2330,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             // Recovery: also requires structured or player-directed
             [/(?:\[\s*(?:Status\s*[:：]\s*)?(?:Cured|Healed|Recovered)\s*\]|\*\s*(?:รักษา|ฟื้นฟู|หายดี)\s*\*|(?:you(?:'re| are| got| have been| were)\s+(?:healed|cured|recovered))|(?:คุณ|ตัวละคร|เจ้า)(?:ถูกรักษา|หายดี|ฟื้นฟู))/i, '_RECOVERY_', ''],
         ];
-        
+
         let changed = false;
         const p = this.data.player;
         if (!p.conditions) p.conditions = [];
@@ -2173,9 +2355,11 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 }
             }
         }
-        
-        // Auto-expire conditions each message
-        if (p.conditions.length > 0) {
+
+        // FIX BUG-A: Only expire conditions on NEW messages, not re-renders from swipe/regen.
+        // When idx === lastProcessedIdx, this is a re-render → skip expiry.
+        const isNewMessage = this._currentProcessingIdx > this.lastProcessedIdx;
+        if (isNewMessage && p.conditions.length > 0) {
             p.conditions = p.conditions.filter(c => {
                 if (c.turnsLeft <= 0) return false;
                 c.turnsLeft--;
@@ -2187,7 +2371,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 return true;
             });
         }
-        
+
         if (changed) this.saveAndRender();
     }
 
@@ -2195,10 +2379,10 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
     detectNPCMoodFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading || isBulk) return;
         if (Object.keys(this.data.bots).length === 0) return;
-        
+
         const angryWords = /(?:โกรธ|เกลียด|รำคาญ|หงุดหงิด|ขู่|ตะคอก|กรีดร้อง|ทำลาย|angry|furious|hate|annoyed|yell|scream|glare|disgusted|irritated|hostile|enraged|threaten|snarl)/gi;
         const happyWords = /(?:ยิ้ม|หัวเราะ|รัก|ชอบ|ดีใจ|ขอบคุณ|สนิท|กอด|จูบ|smile|laugh|love|happy|thank|hug|kiss|blush|giggle|gentle|kind|trust|warm|fondly|affection)/gi;
-        
+
         // Find NPC mentions with their positions in text
         const boldRx = new RegExp(BOLD_RX_SRC, 'g');
         let bm;
@@ -2208,34 +2392,34 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             if (this.data.bots[key]) npcMentions.push({ key, pos: bm.index });
         }
         if (npcMentions.length === 0) return;
-        
+
         // Count sentiment keywords NEAR each NPC mention (within 200 chars)
         let changed = false;
         const delta = 1; // Reduced from 2 to 1 for subtler changes
         const maxPerMessage = 2; // Cap total change per NPC per message
         const npcDeltas = new Map(); // key -> {aff, ann}
-        
+
         for (const mention of npcMentions) {
             const nearby = text.substring(Math.max(0, mention.pos - 50), Math.min(text.length, mention.pos + 200));
             const angryCount = (nearby.match(angryWords) || []).length;
             const happyCount = (nearby.match(happyWords) || []).length;
-            
+
             if (angryCount === 0 && happyCount === 0) continue;
-            
+
             if (!npcDeltas.has(mention.key)) npcDeltas.set(mention.key, { aff: 0, ann: 0 });
             const d = npcDeltas.get(mention.key);
-            
+
             if (angryCount > happyCount) {
                 d.ann = Math.min(d.ann + delta, maxPerMessage);
             } else if (happyCount > angryCount) {
                 d.aff = Math.min(d.aff + delta, maxPerMessage);
             }
         }
-        
+
         for (const [npcKey, d] of npcDeltas) {
             const bot = this.data.bots[npcKey];
             if (!bot) continue;
-            
+
             // FIX H2: Use per-NPC flag so stage is only recalculated for NPCs that actually changed
             let npcChanged = false;
             if (d.ann > 0) {
@@ -2248,58 +2432,137 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             }
             if (npcChanged) bot.stage = DataEngine.calcStage(bot.affection, bot.annoyance);
         }
-        
+
         if (changed) this.saveAndRender();
     }
 
     /**
-     * Post-processing: Remove tracker status tags from the displayed message.
+     * Post-processing: Remove ALL tracker/metadata tags from the displayed message.
      * Only modifies the DOM element — raw message data in chat history is preserved
      * so bulk re-scanning (on delete, etc.) still works.
-     * 
-     * Strips: [Status: HP: X/X | ...], [ได้รับสกิล: ...], [ได้รับไอเท็ม: ...],
-     * [เสียไอเท็ม: ...], [Skill Learned: ...], [Item Obtained: ...], etc.
      */
     _sanitizeDisplayMessage(idx) {
+        if (this._isSanitizing) return; // Guard against MutationObserver infinite loop
         try {
+            this._isSanitizing = true;
             const msgEl = document.querySelector(`[mesid="${idx}"] .mes_text`);
             if (!msgEl) return;
-            
+
             const html = msgEl.innerHTML;
             // Build dynamic stat name list for sanitizer regex
             const dynamicStats = this.data.player?.universe?.statNames || [];
-            const baseStats = ['HP','MP','SP','EXP','STR','AGI','VIT','INT','DEX','LUK','ATK','DEF','SPD','LV','LEVEL'];
-            const allStatNames = [...new Set([...baseStats, ...dynamicStats])].join('|');
-            // Match tracker tags — both English and Thai variants
+            const baseStats = ['HP', 'MP', 'SP', 'EXP', 'XP', 'STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK', 'ATK', 'DEF', 'SPD', 'MATK', 'MDEF', 'LV', 'LEVEL'];
+            const expName = (this.data.player?.universe?.expName || 'EXP').toUpperCase();
+            const goldName = (this.data.player?.universe?.goldName || 'Gold').toUpperCase();
+            const lvlName = (this.data.player?.universe?.levelName || 'Level').toUpperCase();
+            const allStatNames = [...new Set([...baseStats, ...dynamicStats, expName, goldName, lvlName])].join('|');
+
             const cleaned = html
-                // [Status: HP: X/X | MP: X/X | EXP: X/X | Gold: X] — full status block
-                .replace(/\[Status\s*:\s*[^\]]{5,200}\]/gi, '')
+                // ══════════════════════════════════════════
+                // PRIORITY 1: Full status blocks
+                // ══════════════════════════════════════════
+                // [Status: HP: X/X | MP: X/X | EXP: X/X | Gold: X]
+                .replace(/\[\s*Status\s*:\s*[^\]]{5,500}\]/gi, '')
+                // [สถานะ: ...], [Player Status: ...], [ステータス: ...]
+                .replace(/\[\s*(?:สถานะ|สเตตัส|Player\s*Status|ステータス|ค่าสถานะ|พลัง|Current\s*Status|Updated?\s*Status)\s*:\s*[^\]]{5,500}\]/gi, '')
+
+                // ══════════════════════════════════════════
+                // PRIORITY 2: Skill/Item gain/loss tags
+                // ══════════════════════════════════════════
                 // [ได้รับสกิล: ...], [ได้รับไอเท็ม: ...], [เสียไอเท็ม: ...]
-                .replace(/\[(?:ได้รับ|เสีย)(?:สกิล|ไอเท็ม|ทักษะ)\s*:\s*[^\]]{2,150}\]/gi, '')
-                // [Skill Learned: ...], [Item Obtained: ...], [Item Lost: ...]
-                .replace(/\[(?:Skill\s+(?:Learned|Unlocked|Acquired)|New\s+Skill|Item\s+(?:Obtained|Received|Found|Lost|Used))\s*:\s*[^\]]{2,150}\]/gi, '')
-                // Stat-only tags: [HP: 100], [NIN: 10], etc — uses dynamic stat names
-                .replace(new RegExp(`\\[\\s*(?:${allStatNames})\\s*:\\s*\\d+(?:/\\d+)?\\s*\\]`, 'gi'), '')
-                // Clean up leftover empty lines / whitespace
+                .replace(/\[\s*(?:ได้รับ|เสีย|ใช้|สูญเสีย|หมด)(?:สกิล|ไอเท็ม|ทักษะ|ของ|อาวุธ|เกราะ|อุปกรณ์|ยา)\s*:\s*[^\]]{2,200}\]/gi, '')
+                // [Skill Learned: ...], [Item Obtained: ...], [Item Lost: ...], [Item Used: ...]
+                .replace(/\[\s*(?:Skill\s+(?:Learned|Unlocked|Acquired|Gained|Obtained)|New\s+Skill|Item\s+(?:Obtained|Received|Found|Lost|Used|Consumed|Dropped)|Loot|Drop|Reward)\s*:\s*[^\]]{2,200}\]/gi, '')
+                // [Equipment: ...], [Equipped: ...], [Unequipped: ...]
+                .replace(/\[\s*(?:Equipment|Equipped|Unequipped|อุปกรณ์|สวมใส่|ถอด)\s*:\s*[^\]]{2,200}\]/gi, '')
+
+                // ══════════════════════════════════════════
+                // PRIORITY 3: Relationship tags
+                // ══════════════════════════════════════════
+                // [Affection: +5], [Annoyance: +3] — all variants
+                .replace(/\[\s*(?:Affection|Annoyance|ความสนิท|ความรำคาญ|ความรัก|ความโกรธ|ความชอบ|好感度?|怒り|Favorability|Love|Fondness|Hostility|Irritation|Relationship)\s*[:：]\s*[+-]?\d+\s*\]/gi, '')
+                // Bare text on its own line: Affection: +5
+                .replace(/(?:^|<br\s*\/?>|\n)\s*(?:Affection|Annoyance|ความสนิท|ความรำคาญ|ความรัก|ความโกรธ|ความชอบ|Favorability)\s*[:：]\s*[+-]?\d+\s*(?=<br|$|\n)/gim, '')
+
+                // ══════════════════════════════════════════
+                // PRIORITY 4: Conditions / Level Up / Mood
+                // ══════════════════════════════════════════
+                // [Condition: Poisoned (3 turns)], [สถานะผิดปกติ: ...]
+                .replace(/\[\s*(?:Condition|Status\s*Effect|สถานะผิดปกติ|สภาวะ|Buff|Debuff|Effect)\s*:\s*[^\]]{2,150}\]/gi, '')
+                // [Level Up!], [Level Up: Lv.5], [เลเวลอัพ!]
+                .replace(/\[\s*(?:Level\s*Up|เลเวลอัพ|レベルアップ)\s*[!！]?\s*(?::\s*[^\]]{0,100})?\]/gi, '')
+                // [NPC Mood: ...], [Mood: ...]
+                .replace(/\[\s*(?:NPC\s+)?(?:Mood|อารมณ์|気分)\s*:\s*[^\]]{2,100}\]/gi, '')
+                // [Gold: +50], [ทอง: +50], [EXP: +20]
+                .replace(/\[\s*(?:Gold|Money|Coins?|ทอง|เงิน|เหรียญ|EXP|XP|Experience)\s*:\s*[+-]?\d+[^\]]{0,50}\]/gi, '')
+
+                // ══════════════════════════════════════════
+                // PRIORITY 5: Individual stat tags
+                // ══════════════════════════════════════════
+                // [HP: 100], [MP: 50/200], [STR: 15], etc — uses dynamic stat names
+                .replace(new RegExp(`\\[\\s*(?:${allStatNames})\\s*:\\s*[+-]?\\d+(?:/\\d+)?\\s*\\]`, 'gi'), '')
+
+                // ══════════════════════════════════════════
+                // PRIORITY 6: Generic catch-all for remaining tracker tags
+                // ══════════════════════════════════════════
+                // Any [Tag: value] pattern at end of message or on its own line
+                // that looks like metadata (contains numbers, +/-, stat-like content)
+                .replace(/\[\s*(?:HP|MP|SP|ATK|DEF|SPD|LV|Level|Status|Stats?|Gold|EXP|Damage|Heal|Recovery|ฟื้นฟู|รักษา|โจมตี|ป้องกัน|ได้รับ|เสีย|หัก|เพิ่ม|ลด)\s*[:：][^\]]{1,200}\]/gi, '')
+                // Catch-all: [keyword: +/-number] or [keyword: number/number]
+                .replace(/\[\s*[\w\u0E00-\u0E7F]{2,30}\s*[:：]\s*[+-]?\d+(?:\s*\/\s*\d+)?\s*\]/g, '')
+
+                // ══════════════════════════════════════════
+                // PRIORITY 7: Bare-text status lines (no brackets)
+                // ══════════════════════════════════════════
+                // Lines that are purely status data: "HP: 100/400 | MP: 50/200 | ..."
+                .replace(/(?:^|<br\s*\/?>|\n)\s*(?:HP|MP|SP)\s*[:：]\s*\d+\s*\/\s*\d+\s*(?:\|\s*(?:[\w\u0E00-\u0E7F]+)\s*[:：]\s*[+-]?\d+(?:\s*\/\s*\d+)?\s*)*(?=<br|$|\n)/gim, '')
+                // Lines starting with "Status:" or "สถานะ:" on their own
+                .replace(/(?:^|<br\s*\/?>|\n)\s*(?:Status|สถานะ|สเตตัส)\s*[:：]\s*[^\n<]{5,500}(?=<br|$|\n)/gim, '')
+
+                // ══════════════════════════════════════════
+                // CLEANUP: Remove leftover whitespace/breaks
+                // ══════════════════════════════════════════
                 .replace(/(<br\s*\/?>){3,}/gi, '<br><br>')
                 .replace(/\n{3,}/g, '\n\n')
+                // Remove trailing <br> tags at the very end
+                .replace(/(<br\s*\/?\s*>|\s)+$/gi, '')
                 .trim();
-            
+
             if (cleaned !== html) {
+                this._justSanitizedIds.add(idx);
                 msgEl.innerHTML = cleaned;
+                setTimeout(() => this._justSanitizedIds.delete(idx), 250);
             }
         } catch (e) {
             console.debug(LOG_PREFIX, 'Sanitize display error:', e);
+        } finally {
+            this._isSanitizing = false;
         }
     }
 
-    // FIX: Split live vs bulk processing to prevent accumulation bugs.
-    // All detectors now set this._pendingChange = true instead of calling saveAndRender directly.
-    // The single saveAndRender at the end batches everything into one save.
-    processMessageLive(text) {
+    /**
+     * Sanitize ALL visible messages in the DOM.
+     * Called after bulk scan and on page load to ensure no tracker tags are visible.
+     */
+    sanitizeAllVisibleMessages() {
+        try {
+            const allMsgEls = document.querySelectorAll('.mes[mesid]:not(.user_mes) .mes_text');
+            for (const el of allMsgEls) {
+                const mesId = el.closest('.mes')?.getAttribute('mesid');
+                if (mesId != null) {
+                    this._sanitizeDisplayMessage(parseInt(mesId, 10));
+                }
+            }
+            console.debug(LOG_PREFIX, `Sanitized ${allMsgEls.length} visible messages`);
+        } catch (e) {
+            console.debug(LOG_PREFIX, 'Sanitize all error:', e);
+        }
+    }
+
+    processMessageLive(text, idx) {
         // Guard: skip all detection if extension is disabled
         if (extension_settings[META_KEY]?.enabled === false) return;
-        this._pendingChange = false;
+        this._currentProcessingIdx = idx ?? -1; // FIX BUG-A: track current idx for condition expiry guard
         this.detectNPCsFromMessage(text);
         this.detectPlayerStatsFromMessage(text);
         this.detectRelationshipFromMessage(text);
@@ -2307,8 +2570,6 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         this.detectSkillsFromMessage(text);
         this.detectConditionsFromMessage(text);
         this.detectNPCMoodFromMessage(text);
-        // Single batched save for all changes
-        if (this._pendingChange) this.saveAndRender();
     }
 
     processMessageBulk(text) {
@@ -2328,10 +2589,10 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 personaStr = String(getContext().chatMetadata?.user_persona || /** @type {any} */ (getContext()).user_persona || '');
             }
             if (!personaStr || personaStr.length < 10) return;
-            
+
             // Detect skills from persona (bulk mode — no notifications)
             this.detectSkillsFromMessage(personaStr, true);
-            
+
             // Additional persona-specific skill extraction:
             // Handles formats like "พลังพิเศษ: X, Y, Z" or inline "สกิลพิเศษ — X, Y"
             const personaSkillHeaders = [
@@ -2364,7 +2625,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                     }
                 }
             }
-            
+
             // Also detect baseline stats from persona (only applies if stats are still at default 5)
             const detected = this.detector.detect(personaStr);
             const p = this.data.player;
@@ -2409,7 +2670,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 this.data.recalcDerived();
                 console.debug(LOG_PREFIX, 'Persona sync applied baseline stats');
             }
-        } catch(e) {
+        } catch (e) {
             console.debug(LOG_PREFIX, 'Persona sync error:', e);
         }
     }
@@ -2417,14 +2678,14 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
     detectSkillsFromMessage(text, isBulk = false) {
         if (!extension_settings[META_KEY]?.autoDetect || !text || this.data._isLoading) return;
         let changed = false;
-        
+
         const rankRx = /(?:Rank|แรงค์|เกรด|ระดับ|Lv|Level)[\s\-:：]*([A-Z]{1,3}|[0-9]+)/i;
 
         // 1. Core Action: "Skill Learned: Fireball - Description"
         // FIX: Require line-start context (^|\n|[|•|>) before skill keywords
         // This prevents mid-sentence narrative like "เธอแสดงสกิลใหม่ที่..." from false-triggering
         const singleGainRx = /(?:^|[\n\r\[|•►▸>])\s*(?:Skill\s*(?:Learned|Unlocked|Acquired|Obtained|Gain)|New\s*Skill|เรียนรู้สกิล|ปลดล็อกสกิล|ได้รับสกิล|ได้สกิลใหม่|สกิลใหม่|ความสามารถใหม่)[\s:：!\-]+\**([^\n*]{2,80}?)\**\s*(?:[\-ประกอบกับ:：]+\s*(.*))?$/gim;
-        
+
         let m;
         while ((m = singleGainRx.exec(text)) !== null) {
             let rawName = m[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
@@ -2442,7 +2703,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             if (/^(แสดง|รู้สึก|ดูเหมือน|พยายาม|ตัดสินใจ|สังเกต|ตระหนัก|คิด|เริ่ม|หัน|มอง|พูด|ถาม|ตอบ|บอก|เดิน|วิ่ง|นั่ง|ยืน)/.test(rawName)) continue;
 
             let desc = (m[2] || '').trim();
-            
+
             // If desc is empty, look at the next line immediately following
             if (!desc) {
                 const nextLines = text.substring(m.index + m[0].length).trimStart().split('\n');
@@ -2454,7 +2715,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             }
 
             desc = desc.replace(/^[)\]]+/, '').trim();
-            
+
             const nearby = text.substring(Math.max(0, m.index - 30), Math.min(text.length, m.index + 150));
             const rm = nearby.match(rankRx);
             const rank = rm ? rm[1].toUpperCase() : '?';
@@ -2490,7 +2751,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 let sName = mItem[1].trim().replace(/\*+/g, '').replace(/[)\]]+$/, '').trim();
                 let sDesc = (mItem[2] || '').trim().replace(/^[)\]]+/, '').trim();
                 if (sName.length < 2 || sName.length > 50) continue;
-                
+
                 const rm = sDesc.match(rankRx) || sName.match(rankRx);
                 const sRank = rm ? rm[1].toUpperCase() : '?';
                 if (rm) {
@@ -2511,7 +2772,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 }
             }
         }
-        
+
         // 3. Flat comma list fallback for Persona: "Skills: Fireball, Heal, Slash"
         const commaListRx = /\[?\s*(?:Skills?|Abilities|ความสามารถ|สกิล|ทักษะ|สกิลติดตัว|能力|スキル)\s*\]?\s*[:：]\s*([a-zA-Z\u0E00-\u0E7F\u3000-\u9FFF\s,、]+)(?:\n|$)/gi;
         let mComma;
@@ -2573,11 +2834,11 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 document.getElementById('ac-edit-dept')?.addEventListener('input', e => newDept = /** @type {HTMLInputElement} */ (e.target).value);
                 document.getElementById('ac-edit-aliases')?.addEventListener('input', e => newAlias = /** @type {HTMLInputElement} */ (e.target).value);
                 document.getElementById('ac-edit-affection')?.addEventListener('input', e => {
-                    newAff = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
+                    newAff = parseInt(/** @type {HTMLInputElement} */(e.target).value) || 0;
                     const v = document.getElementById('ac-edit-aff-val'); if (v) v.textContent = String(newAff);
                 });
                 document.getElementById('ac-edit-annoyance')?.addEventListener('input', e => {
-                    newAnn = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 0;
+                    newAnn = parseInt(/** @type {HTMLInputElement} */(e.target).value) || 0;
                     const v = document.getElementById('ac-edit-ann-val'); if (v) v.textContent = String(newAnn);
                 });
             }
@@ -2593,10 +2854,11 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         bot.aliases = (newAlias || '').split(',').map(s => s.trim()).filter(Boolean);
 
         this.data.setRelationship(npcId, newAff, newAnn);
-        
-        // Preserve manual edits into the backup state to survive Swipes
-        if (this.data._backup?.bots?.[npcId]) {
-            const bBot = this.data._backup.bots[npcId];
+
+        // FIX BUG-N: Use sanitized key to access backup (raw npcId may not match backup keys)
+        const backupKey = this.data.getBotKey(npcId);
+        if (this.data._backup?.bots?.[backupKey]) {
+            const bBot = this.data._backup.bots[backupKey];
             bBot.nickname = bot.nickname;
             bBot.dept = bot.dept;
             bBot.aliases = [...bot.aliases];
@@ -2620,14 +2882,34 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             '<h3>⟳ Reset Azure Codex?</h3><p>Delete <b>all NPC, stats, and inventory data</b> for this chat?</p><p style="color:#e74c3c;font-size:.85rem">⚠ Cannot be undone.</p>',
             POPUP_TYPE.CONFIRM,
         );
-        if (ok) { this.data.reset(); this.ui.activeTab = 'all'; this.saveAndRender(); notify('success', 'All data cleared.', '✦ Reset Complete'); }
+        if (ok) {
+            this.data.reset();
+            // FIX BUG-04: Clear _universeSynced so auto-sync works on next chat
+            try {
+                const cm = getContext().chatMetadata;
+                if (cm?.[META_KEY]) {
+                    delete cm[META_KEY]._universeSynced;
+                    saveMetadataDebounced();
+                }
+            } catch(e) {}
+            this.ui.activeTab = 'all';
+            this.saveAndRender();
+            notify('success', 'All data cleared.', '✦ Reset Complete');
+        }
     }
 
     // ── Overlay ──
     createOverlay() {
+        // FIX BUG-06: Abort previous drag/resize event listeners to prevent memory leaks
+        if (this._dragAbortController) {
+            this._dragAbortController.abort();
+        }
+        this._dragAbortController = new AbortController();
+        const abortSignal = this._dragAbortController.signal;
+
         document.getElementById('azure-codex-root')?.remove();
         document.getElementById('azure-codex-float-btn')?.remove();
-        const btn = document.createElement('button'); btn.id = 'azure-codex-float-btn'; btn.textContent = '✦ Azure Codex'; document.body.appendChild(btn);
+        const btn = document.createElement('button'); btn.id = 'azure-codex-float-btn'; btn.textContent = '✦'; document.body.appendChild(btn);
         const root = document.createElement('div'); root.id = 'azure-codex-root';
         root.innerHTML = `
         <div class="ac-wrapper">
@@ -2689,8 +2971,8 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             this._positionFloatBtn();
             if (root.classList.contains('show-overlay')) this._positionOverlay();
         };
-        window.addEventListener('resize', onResize);
-        window.addEventListener('orientationchange', () => setTimeout(onResize, 300));
+        window.addEventListener('resize', onResize, { signal: abortSignal });
+        window.addEventListener('orientationchange', () => setTimeout(onResize, 300), { signal: abortSignal });
 
         this.updateFloatBtn();
         this.ui.render();
@@ -2710,7 +2992,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         requestAnimationFrame(() => {
-            const bw = btn.offsetWidth || 170;
+            const bw = btn.offsetWidth || 48;
             const bh = btn.offsetHeight || 48;
             if (vw <= 768) {
                 // Mobile: bottom-center, above the input bar (~80px from bottom)
@@ -2747,7 +3029,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             root.style.maxHeight = maxH + 'px';
         } else {
             // Desktop: floating panel, bottom-right
-            const pw = Math.min(620, vw - 40);
+            const pw = Math.min(780, vw - 40);
             const maxH = vh - 100;
             root.style.left = (vw - pw - 20) + 'px';
             root.style.top = Math.max(20, vh - maxH - 80) + 'px';
@@ -2867,13 +3149,13 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
         // Mouse events
         el.addEventListener('mousedown', onStart);
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('mousemove', onMove, { signal: this._dragAbortController?.signal });
+        document.addEventListener('mouseup', onEnd, { signal: this._dragAbortController?.signal });
 
         // Touch events
         el.addEventListener('touchstart', onStart, { passive: true });
-        document.addEventListener('touchmove', onMove, { passive: false });
-        document.addEventListener('touchend', onEnd);
+        document.addEventListener('touchmove', onMove, { passive: false, signal: this._dragAbortController?.signal });
+        document.addEventListener('touchend', onEnd, { signal: this._dragAbortController?.signal });
 
         // Override click to prevent toggle when dragged
         if (isFloatBtn) {
@@ -2943,11 +3225,11 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         };
 
         handle.addEventListener('mousedown', onStart);
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('mousemove', onMove, { signal: this._dragAbortController?.signal });
+        document.addEventListener('mouseup', onEnd, { signal: this._dragAbortController?.signal });
         handle.addEventListener('touchstart', onStart, { passive: true });
-        document.addEventListener('touchmove', onMove, { passive: false });
-        document.addEventListener('touchend', onEnd);
+        document.addEventListener('touchmove', onMove, { passive: false, signal: this._dragAbortController?.signal });
+        document.addEventListener('touchend', onEnd, { signal: this._dragAbortController?.signal });
     }
 
     /** Clamp coordinates so the element stays within the visible viewport */
@@ -3025,11 +3307,11 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         }));
 
         cmd('codex', async () => { this.toggleOverlay(); return 'Azure Codex toggled.'; }, null, 'Toggle the Azure Codex panel.');
-        cmd('npc-add', async (_, v) => { const n = v?.trim(); if (!n) return 'Usage: /npc-add [name]'; this.data.addBot(n,n,n); this.saveAndRender(); return `NPC "${n}" added.`; }, 'NPC name', 'Add NPC.');
+        cmd('npc-add', async (_, v) => { const n = v?.trim(); if (!n) return 'Usage: /npc-add [name]'; this.data.addBot(n, n, n); this.saveAndRender(); return `NPC "${n}" added.`; }, 'NPC name', 'Add NPC.');
         cmd('npc-remove', async (_, v) => { const n = v?.trim(); if (!n) return 'Usage: /npc-remove [name]'; this.data.removeBot(n); this.saveAndRender(); return `NPC "${n}" removed.`; }, 'NPC name', 'Remove NPC.');
         cmd('rel', async (_, v) => {
             const p = v?.trim().split(/\s+/); if (!p || p.length < 2) return 'Usage: /rel [name] [aff] [ann?]';
-            this.data.updateRelationship(p[0], parseInt(p[1])||0, parseInt(p[2])||0); this.saveAndRender();
+            this.data.updateRelationship(p[0], parseInt(p[1]) || 0, parseInt(p[2]) || 0); this.saveAndRender();
             return `Relationship updated for "${p[0]}".`;
         }, 'name aff [ann]', 'Update NPC relationship.');
 
@@ -3039,7 +3321,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             if (firstSpace === -1) return 'Usage: /npc-alias [main_name] [alias_name]';
             const mainName = args.substring(0, firstSpace).trim();
             const aliasName = args.substring(firstSpace + 1).trim();
-            
+
             const mainKey = this.data.getBotKey(mainName);
             let bot = this.data.bots[mainKey];
             if (!bot) {
@@ -3056,7 +3338,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         cmd('inventory-add', async (_, v) => { const n = v?.trim(); if (!n) return 'Usage: /inventory-add [item]'; this.data.addItem(n); this.saveAndRender(); return `Added "${n}".`; }, 'Item name', 'Add item.');
         cmd('inventory-remove', async (_, v) => { const n = v?.trim(); if (!n) return 'Usage: /inventory-remove [item]'; const ok = this.data.removeItem(n); this.saveAndRender(); return ok ? `Removed "${n}".` : `"${n}" not found.`; }, 'Item name', 'Remove item.');
         cmd('use-item', async (_, v) => { const n = v?.trim(); if (!n) return 'Usage: /use-item [name]'; const used = this.data.useItem(n); this.saveAndRender(); return used ? `Used: ${used}` : `"${n}" not found.`; }, 'Item name', 'Use an item from inventory.');
-        cmd('gold', async (_, v) => { const amt = parseInt(v?.trim()); if (isNaN(amt)) return 'Usage: /gold [amount]'; this.data.player.gold = Math.max(0, (this.data.player.gold ?? 0) + amt); this.saveAndRender(); return `Gold: ${this.data.player.gold}`; }, 'amount', 'Add or subtract gold. /gold 100 or /gold -50');
+        cmd('gold', async (_, v) => { const amt = parseInt(v?.trim()); if (isNaN(amt)) return 'Usage: /gold [amount]'; this.data.player.gold = Math.max(0, Math.min(9999999, (this.data.player.gold ?? 0) + amt)); this.saveAndRender(); return `Gold: ${this.data.player.gold}`; }, 'amount', 'Add or subtract gold. /gold 100 or /gold -50');
 
         cmd('skill-add', async (_, v) => {
             const args = v?.trim();
@@ -3089,7 +3371,7 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         cmd('stat-alloc', async (_, v) => {
             const validStats = this.data.player.universe?.statNames || ['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK'];
             const p = v?.trim().split(/\s+/); if (!p || p.length < 1) return `Usage: /stat-alloc [${validStats.join('|')}] [amount?]`;
-            const stat = p[0].toUpperCase(), amt = parseInt(p[1])||1;
+            const stat = p[0].toUpperCase(), amt = parseInt(p[1]) || 1;
             if (!validStats.includes(stat)) return `Invalid stat. Use: ${validStats.join(', ')}`;
             const ok = this.data.allocateStat(stat, amt); this.saveAndRender();
             return ok ? `Allocated ${amt} pt(s) to ${stat}.` : 'Not enough stat points!';
@@ -3119,6 +3401,8 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
             this._swipeRestorePending = false; // reset swipe flag
 
             setTimeout(() => {
+                // FIX: Skip all processing if extension is disabled
+                if (extension_settings[META_KEY]?.enabled === false) return;
                 this._isBulkScanning = true;
                 const t0 = performance.now();
                 try {
@@ -3155,12 +3439,15 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
 
                     console.debug(LOG_PREFIX, `Bulk scan: ${scanned} msgs in ${(performance.now() - t0).toFixed(0)}ms`);
 
+                    // ── 4b. Sanitize all visible messages to hide tracker tags ──
+                    setTimeout(() => this.sanitizeAllVisibleMessages(), 300);
+
                     // ── 5. Auto Sync Universe (first time only) ──
                     try {
                         const meta = getContext().chatMetadata?.[META_KEY];
                         const alreadySynced = meta?._universeSynced;
                         const currentStatNames = this.data.player.universe?.statNames;
-                        const isDefault = !currentStatNames || JSON.stringify(currentStatNames) === JSON.stringify(['STR','AGI','VIT','INT','DEX','LUK']);
+                        const isDefault = !currentStatNames || JSON.stringify(currentStatNames) === JSON.stringify(['STR', 'AGI', 'VIT', 'INT', 'DEX', 'LUK']);
                         const hasExistingData = this.data.player.skills.length > 0 ||
                             Object.values(this.data.player.stats).some(v => v !== 5);
 
@@ -3175,10 +3462,10 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                                 try {
                                     const syncBtn = document.querySelector('.sao-sync-universe-btn');
                                     if (syncBtn) syncBtn.click();
-                                } catch(e) { console.debug(LOG_PREFIX, 'Auto-sync skipped:', e); }
+                                } catch (e) { console.debug(LOG_PREFIX, 'Auto-sync skipped:', e); }
                             }, 2000);
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 } catch (err) { console.warn(LOG_PREFIX, 'Scan error:', err); }
                 finally { this._isBulkScanning = false; }
             }, 500);
@@ -3218,7 +3505,68 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                 this._lastContentFingerprint = contentFingerprint;
 
                 if (idx === this.lastProcessedIdx) {
-                    this.data.restore();
+                    // FIX: Full volatile-state rescan for swipe/regen
+                    // The simple backup/restore fails after fresh chat load because
+                    // the backup contains ALL messages' accumulated effects (loaded from chatMetadata).
+                    // A rescan from messages 0..idx-1 guarantees correct pre-message state.
+                    try {
+                        // FIX BUG-A2: Preserve level/stats/statPoints — these can come from
+                        // manual UI allocation (/stat-alloc) which isn't recorded in chat history
+                        const preserved = {
+                            universe: this.data.player.universe ? JSON.parse(JSON.stringify(this.data.player.universe)) : null,
+                            skillTrees: this.data.player.skillTrees ? JSON.parse(JSON.stringify(this.data.player.skillTrees)) : {},
+                            level: this.data.player.level,
+                            stats: JSON.parse(JSON.stringify(this.data.player.stats)),
+                            statPoints: this.data.player.statPoints,
+                        };
+                        // Reset volatile state (same as MESSAGE_DELETED handler)
+                        this.data.player.exp = 0;
+                        this.data.player.gold = 0;
+                        this.data.player.conditions = [];
+                        this.data.inventory = [];
+                        this.data.player.skills = [];
+                        // Restore preserved config
+                        if (preserved.universe) this.data.player.universe = preserved.universe;
+                        this.data.player.skillTrees = preserved.skillTrees;
+                        this.data.player.level = preserved.level;
+                        this.data.player.stats = preserved.stats;
+                        this.data.player.statPoints = preserved.statPoints;
+                        this.data.recalcDerived();
+                        this.data.player.hp = this.data.player.hpMax;
+                        this.data.player.mp = this.data.player.mpMax;
+                        // FIX BUG-A1: Reset NPC relationships so deltas don't stack on swipe
+                        for (const bot of Object.values(this.data.bots)) {
+                            bot.affection = 0;
+                            bot.annoyance = 0;
+                            bot.stage = 0;
+                            bot.appearances = 0;
+                        }
+                        // Rescan messages 0..idx-1 for volatile state
+                        const chatMsgs = getContext().chat;
+                        if (Array.isArray(chatMsgs)) {
+                            try { this.syncFromPersona(); } catch(e) {}
+                            for (let i = 0; i < idx; i++) {
+                                const m = chatMsgs[i];
+                                if (!m.is_user && !m.is_system && m.mes) {
+                                    this.detectNPCsFromMessage(m.mes, true);
+                                    this.detectPlayerStatsFromMessage(m.mes, true);
+                                    this.detectRelationshipFromMessage(m.mes, true);
+                                    this.detectInventoryFromMessage(m.mes, true);
+                                    this.detectSkillsFromMessage(m.mes, true);
+                                }
+                            }
+                            this.cleanupMinorNPCs();
+                            this.data.recalcDerived();
+                        }
+                        // FIX BUG-A2: Re-apply preserved level/stats/statPoints AFTER rescan
+                        // to prevent detectPlayerStatsFromMessage from overwriting manual allocations
+                        this.data.player.level = preserved.level;
+                        this.data.player.stats = preserved.stats;
+                        this.data.player.statPoints = preserved.statPoints;
+                        this.data.recalcDerived();
+                        console.debug(LOG_PREFIX, `Swipe rescan: rebuilt state from ${idx} prior messages`);
+                    } catch(e) { console.warn(LOG_PREFIX, 'Swipe rescan error:', e); }
+                    this.data.backup(); // Fresh backup of correct pre-message state
                     this._swipeRestorePending = false;
                 } else if (idx > this.lastProcessedIdx) {
                     this.data.backup();
@@ -3231,11 +3579,12 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
                     try {
                         this.syncFromPersona();
                         this._personaSynced = true;
-                    } catch(e) { console.debug(LOG_PREFIX, 'Persona sync skipped:', e); }
+                    } catch (e) { console.debug(LOG_PREFIX, 'Persona sync skipped:', e); }
                 }
-
-                this.processMessageLive(msg.mes);
+                console.debug(LOG_PREFIX, `Processing msg idx=${idx}, len=${msg.mes.length}`);
+                this.processMessageLive(msg.mes, idx);
                 this.lastProcessedIdx = idx;
+                console.debug(LOG_PREFIX, `Done: bots=${Object.keys(this.data.bots).length}`);
 
                 // ── Post-processing: hide tracker tags from display ──
                 this._sanitizeDisplayMessage(idx);
@@ -3243,27 +3592,119 @@ Keep each epithet short (2-6 Thai words max). Output ONLY the raw JSON.]`;
         });
 
         eventSource.on(event_types.MESSAGE_DELETED, (idx) => {
+            // FIX: Skip processing if extension is disabled
+            if (extension_settings[META_KEY]?.enabled === false) return;
             if (idx <= this.lastProcessedIdx) {
                 this._isBulkScanning = true;
                 try {
-                    this.data.save();
-                    this.data.load();
+                    // FIX BUG-P: Don't save-then-load (that preserves deleted message's stats).
+                    // Instead, preserve universe config & persona data, but reset volatile game state.
+                    const preserved = {
+                        universe: this.data.player.universe ? JSON.parse(JSON.stringify(this.data.player.universe)) : null,
+                        skillTrees: this.data.player.skillTrees ? JSON.parse(JSON.stringify(this.data.player.skillTrees)) : {},
+                    };
+
+                    // Reset volatile state that should be rebuilt from chat history
+                    // NOTE: stats, statPoints, level are PRESERVED because stat allocations
+                    // (/stat-alloc) are not recorded in chat and can't be rebuilt from rescan.
+                    // Only HP/MP/EXP/Gold (which come from [Status:] tags) get reset.
+                    this.data.player.hp = this.data.player.hpMax;
+                    this.data.player.mp = this.data.player.mpMax;
+                    this.data.player.exp = 0;
+                    this.data.player.gold = 0;
+                    this.data.player.conditions = [];
+                    this.data.inventory = [];
+                    this.data.player.skills = [];
+
+                    // Restore preserved config
+                    if (preserved.universe) this.data.player.universe = preserved.universe;
+                    this.data.player.skillTrees = preserved.skillTrees;
+                    this.data.recalcDerived();
+                    this.data.player.hp = this.data.player.hpMax;
+                    this.data.player.mp = this.data.player.mpMax;
+
                     const chat = getContext().chat;
                     if (Array.isArray(chat)) {
-                        try { this.syncFromPersona(); } catch(e) {}
-                        for (const bot of Object.values(this.data.bots)) bot.appearances = 0;
+                        try { this.syncFromPersona(); } catch (e) { }
+                        for (const bot of Object.values(this.data.bots)) {
+                            bot.appearances = 0;
+                            // FIX BUG-S: Reset relationship values so delta re-apply doesn't stack
+                            bot.affection = 0;
+                            bot.annoyance = 0;
+                            bot.stage = 0;
+                        }
+                        // FIX BUG-K: Set _currentProcessingIdx to safe value during bulk rescan
+                        this._currentProcessingIdx = -1;
+                        // Full rescan: process ALL detectors so stats/inventory/gold are rebuilt
                         for (const msg of chat) {
-                            if (!msg.is_user && !msg.is_system && msg.mes) this.processMessageBulk(msg.mes);
+                            if (!msg.is_user && !msg.is_system && msg.mes) {
+                                this.detectNPCsFromMessage(msg.mes, true);
+                                this.detectPlayerStatsFromMessage(msg.mes, true);
+                                this.detectRelationshipFromMessage(msg.mes, true);
+                                this.detectInventoryFromMessage(msg.mes, true);
+                                this.detectSkillsFromMessage(msg.mes, true);
+                            }
                         }
                         this.cleanupMinorNPCs();
+                        this.data.recalcDerived(); // FIX BUG-R: recalc hpMax/mpMax after bulk stat rebuild
                         this.lastProcessedIdx = chat.length - 1;
                         this.data.backup();
                         this.saveAndRender();
+                        console.debug(LOG_PREFIX, `Delete rescan complete: ${chat.length} messages`);
+                        // Sanitize all visible messages after rescan
+                        setTimeout(() => this.sanitizeAllVisibleMessages(), 300);
                     }
-                } catch(e) { console.warn(LOG_PREFIX, 'Delete rescan error:', e); }
+                } catch (e) { console.warn(LOG_PREFIX, 'Delete rescan error:', e); }
                 finally { this._isBulkScanning = false; }
             }
         });
+
+        // ── MutationObserver: catch SillyTavern re-renders that undo our DOM sanitization ──
+        // When ST re-renders a message from raw msg.mes (e.g. scroll into view, UI refresh),
+        // the tracker tags reappear. This observer watches for childList changes in #chat
+        // and re-sanitizes affected messages.
+        try {
+            const chatContainer = document.getElementById('chat');
+            if (chatContainer) {
+                let _sanitizeTimer = null;
+                const observer = new MutationObserver((mutations) => {
+                    if (extension_settings[META_KEY]?.enabled === false) return;
+                    // Debounce: collect all mutations within 150ms, then sanitize once
+                    if (_sanitizeTimer) clearTimeout(_sanitizeTimer);
+                    _sanitizeTimer = setTimeout(() => {
+                        _sanitizeTimer = null;
+                        // Find which message indices were affected
+                        const affectedIds = new Set();
+                        for (const mutation of mutations) {
+                            // Check both added nodes and the target itself
+                            const mesEl = mutation.target.closest?.('.mes[mesid]') || mutation.target.querySelector?.('.mes[mesid]');
+                            if (mesEl) {
+                                affectedIds.add(parseInt(mesEl.getAttribute('mesid'), 10));
+                            }
+                            for (const node of mutation.addedNodes) {
+                                if (node.nodeType !== 1) continue;
+                                const mes = node.closest?.('.mes[mesid]') || node.querySelector?.('.mes[mesid]');
+                                if (mes) affectedIds.add(parseInt(mes.getAttribute('mesid'), 10));
+                                // Also check if the added node itself is a .mes
+                                if (node.matches?.('.mes[mesid]')) affectedIds.add(parseInt(node.getAttribute('mesid'), 10));
+                            }
+                        }
+                        if (affectedIds.size > 0) {
+                            for (const id of affectedIds) {
+                                // FIX BUG-09: Skip IDs we just sanitized to prevent re-entry
+                                if (!isNaN(id) && !this._justSanitizedIds.has(id)) {
+                                    this._sanitizeDisplayMessage(id);
+                                }
+                            }
+                        }
+                    }, 150);
+                });
+                observer.observe(chatContainer, { childList: true, subtree: true });
+                console.debug(LOG_PREFIX, 'MutationObserver installed for chat sanitization');
+            }
+        } catch (e) {
+            console.debug(LOG_PREFIX, 'MutationObserver setup skipped:', e);
+        }
     }
 
     // ── Init ──

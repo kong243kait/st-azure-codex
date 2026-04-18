@@ -101,11 +101,14 @@
   background: linear-gradient(135deg, #040a14 0%, #071224 100%);
   color: #6ab8e8;
   border: 1px solid rgba(30,144,255,.3);
-  padding: 12px 22px;
-  border-radius: 30px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 50%;
   font-family: 'Cinzel', serif;
-  font-size: 0.8rem;
-  letter-spacing: 0.12em;
+  font-size: 1.1rem;
+  line-height: 48px;
+  text-align: center;
   cursor: grab;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -244,7 +247,7 @@
 }
 #azure-codex-root .ac-title {
   font-family: 'Cinzel', serif;
-  font-size: .85rem;
+  font-size: 1rem;
   letter-spacing: .3em;
   color: var(--gold);
   text-transform: uppercase;
@@ -252,7 +255,7 @@
 }
 #azure-codex-root .ac-subtitle {
   font-family: 'Cormorant Garamond', serif;
-  font-size: .7rem;
+  font-size: .8rem;
   font-style: italic;
   color: var(--tx2);
   letter-spacing: .1em;
@@ -382,10 +385,10 @@
 #azure-codex-root .ac-tabs::-webkit-scrollbar { height: 0; }
 #azure-codex-root .ac-tab {
   flex: 1;
-  padding: .6rem .3rem;
+  padding: .7rem .4rem;
   text-align: center;
   font-family: 'Cinzel', serif;
-  font-size: .55rem;
+  font-size: .65rem;
   letter-spacing: .1em;
   color: var(--tx3);
   cursor: pointer;
@@ -473,7 +476,7 @@
 
 #azure-codex-root .ac-card-name {
   font-family: 'Cinzel', serif;
-  font-size: .9rem;
+  font-size: 1rem;
   color: var(--petal);
   letter-spacing: .08em;
   margin-bottom: .05rem;
@@ -483,7 +486,7 @@
 #azure-codex-root .ac-card-dept {
   font-family: 'Cormorant Garamond', serif;
   font-style: italic;
-  font-size: .65rem;
+  font-size: .75rem;
   color: var(--tx2);
   margin-bottom: .55rem;
   letter-spacing: .05em;
@@ -525,7 +528,7 @@
 }
 #azure-codex-root .ac-gauge-label {
   font-family: 'Cinzel', serif;
-  font-size: .44rem;
+  font-size: .52rem;
   color: var(--tx2);
   letter-spacing: .1em;
   width: 2.8rem;
@@ -671,7 +674,7 @@
 }
 #azure-codex-root .ac-stat-val {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   font-weight: 300;
   display: block;
   margin-bottom: .1rem;
@@ -679,7 +682,7 @@
 }
 #azure-codex-root .ac-stat-label {
   font-family: 'Cinzel', serif;
-  font-size: .42rem;
+  font-size: .5rem;
   color: var(--tx3);
   letter-spacing: .15em;
 }
@@ -1619,9 +1622,10 @@
 @media (max-width: 768px) {
   /* Button: positioned by JS _positionFloatBtn() */
   #azure-codex-float-btn {
-    padding: 14px 24px;
-    font-size: .85rem;
-    border-radius: 40px;
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
+    line-height: 44px;
   }
 
   /* Panel: positioned by JS _positionOverlay() */
